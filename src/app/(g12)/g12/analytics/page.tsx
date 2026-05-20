@@ -35,26 +35,34 @@ export default function G12AnalyticsPage() {
   const participation = useParticipation();
 
   const attendanceBars = useMemo(
-    () => attendance.data.slice(-8).map((p) => ({ label: p.week.slice(-3), value: p.present })),
+    () =>
+      (Array.isArray(attendance.data) ? attendance.data : [])
+        .slice(-8)
+        .map((p) => ({ label: weekLabel(p?.week), value: p?.present ?? 0 })),
     [attendance.data],
   );
   const growthPoints = useMemo(
-    () => growth.data.map((p) => ({ label: p.week.slice(-3), value: p.members })),
+    () =>
+      (Array.isArray(growth.data) ? growth.data : []).map((p) => ({
+        label: weekLabel(p?.week),
+        value: p?.members ?? 0,
+      })),
     [growth.data],
   );
   const typeSlices = useMemo(
     () =>
-      meetingTypes.data.map((s) => ({
-        label: s.type,
-        value: s.count,
-        color: TYPE_COLORS[s.type] ?? "#999",
+      toMeetingTypeArray(meetingTypes.data).map((s) => ({
+        label: s?.type ?? "unknown",
+        value: s?.count ?? 0,
+        color: TYPE_COLORS[s?.type ?? ""] ?? "#999",
       })),
     [meetingTypes.data],
   );
 
-  const totalMembers = growth.data.at(-1)?.members ?? 0;
+  const growthArr = Array.isArray(growth.data) ? growth.data : [];
+  const totalMembers = growthArr.at(-1)?.members ?? 0;
   const totalReports = useMemo(
-    () => cellsWeekly.data.reduce((s, p) => s + p.reports, 0),
+    () => (Array.isArray(cellsWeekly.data) ? cellsWeekly.data : []).reduce((s, p) => s + (p?.reports ?? 0), 0),
     [cellsWeekly.data],
   );
 
@@ -141,6 +149,24 @@ export default function G12AnalyticsPage() {
       </div>
     </div>
   );
+}
+
+/** Tolerate missing/short week strings ("2026-W18" → "W18"). */
+function weekLabel(w: unknown): string {
+  if (typeof w !== "string" || w.length === 0) return "";
+  return w.length >= 3 ? w.slice(-3) : w;
+}
+
+/** Meeting types may be array or object — coerce to array. */
+function toMeetingTypeArray(d: unknown): Array<{ type: string; count: number }> {
+  if (Array.isArray(d)) return d as Array<{ type: string; count: number }>;
+  if (d && typeof d === "object") {
+    return Object.entries(d as Record<string, unknown>).map(([type, count]) => ({
+      type,
+      count: typeof count === "number" ? count : Number(count) || 0,
+    }));
+  }
+  return [];
 }
 
 function thStyle(): React.CSSProperties {

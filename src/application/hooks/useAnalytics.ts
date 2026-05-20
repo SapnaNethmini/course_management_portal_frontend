@@ -60,14 +60,26 @@ function useAnalyticsEndpoint<T>(
     setError(null);
     try {
       const res = await apiRequest<BaseResponse<T> | T>(path);
-      // Envelope shape: { data, scope }
-      if (res && typeof res === "object" && "data" in (res as object)) {
-        const env = res as BaseResponse<T>;
-        setData(env.data ?? empty);
-        setScope(env.scope ?? "unknown");
+      // Common backend envelopes: {data,scope}, {items:[]}, raw array, null
+      let next: T = empty;
+      if (res == null) {
+        next = empty;
+      } else if (Array.isArray(res)) {
+        next = res as unknown as T;
+      } else if (typeof res === "object") {
+        const obj = res as { data?: T; items?: T; scope?: AnalyticsScope };
+        if (obj.data !== undefined) {
+          next = obj.data ?? empty;
+          setScope(obj.scope ?? "unknown");
+        } else if (Array.isArray(obj.items)) {
+          next = obj.items as unknown as T;
+        } else {
+          next = res as T;
+        }
       } else {
-        setData((res as T) ?? empty);
+        next = (res as T) ?? empty;
       }
+      setData(next ?? empty);
     } catch (err) {
       if (err instanceof ApiRequestError) {
         setError({ status: err.status, code: err.code });

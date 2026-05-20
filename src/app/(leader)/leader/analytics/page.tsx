@@ -31,34 +31,34 @@ export default function LeaderAnalyticsPage() {
 
   const attendanceBars = useMemo(
     () =>
-      attendance.data.slice(-12).map((p) => ({
-        label: p.week.slice(-3), // "W18"
-        value: p.present,
-      })),
+      (Array.isArray(attendance.data) ? attendance.data : [])
+        .slice(-12)
+        .map((p) => ({ label: weekLabel(p?.week), value: p?.present ?? 0 })),
     [attendance.data],
   );
 
   const typeSlices = useMemo(
     () =>
-      meetingTypes.data.map((s) => ({
-        label: s.type,
-        value: s.count,
-        color: TYPE_COLORS[s.type] ?? "#999",
+      toMeetingTypeArray(meetingTypes.data).map((s) => ({
+        label: s?.type ?? "unknown",
+        value: s?.count ?? 0,
+        color: TYPE_COLORS[s?.type ?? ""] ?? "#999",
       })),
     [meetingTypes.data],
   );
 
   const totalReports = useMemo(
-    () => cellsWeekly.data.reduce((s, p) => s + p.reports, 0),
+    () => (Array.isArray(cellsWeekly.data) ? cellsWeekly.data : []).reduce((s, p) => s + (p?.reports ?? 0), 0),
     [cellsWeekly.data],
   );
   const totalAttendance = useMemo(
-    () => cellsWeekly.data.reduce((s, p) => s + p.attendance, 0),
+    () => (Array.isArray(cellsWeekly.data) ? cellsWeekly.data : []).reduce((s, p) => s + (p?.attendance ?? 0), 0),
     [cellsWeekly.data],
   );
   const avgRate = useMemo(() => {
-    if (attendance.data.length === 0) return 0;
-    return attendance.data.reduce((s, p) => s + p.rate, 0) / attendance.data.length;
+    const arr = Array.isArray(attendance.data) ? attendance.data : [];
+    if (arr.length === 0) return 0;
+    return arr.reduce((s, p) => s + (p?.rate ?? 0), 0) / arr.length;
   }, [attendance.data]);
 
   const handleExport = async () => {
@@ -116,4 +116,22 @@ export default function LeaderAnalyticsPage() {
       </div>
     </div>
   );
+}
+
+/** Tolerate missing/short week strings ("2026-W18" → "W18"). */
+function weekLabel(w: unknown): string {
+  if (typeof w !== "string" || w.length === 0) return "";
+  return w.length >= 3 ? w.slice(-3) : w;
+}
+
+/** Meeting types may be array or object — coerce to array. */
+function toMeetingTypeArray(d: unknown): Array<{ type: string; count: number }> {
+  if (Array.isArray(d)) return d as Array<{ type: string; count: number }>;
+  if (d && typeof d === "object") {
+    return Object.entries(d as Record<string, unknown>).map(([type, count]) => ({
+      type,
+      count: typeof count === "number" ? count : Number(count) || 0,
+    }));
+  }
+  return [];
 }

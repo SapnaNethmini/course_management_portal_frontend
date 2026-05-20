@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
@@ -36,6 +36,40 @@ export default function NewCoursePage() {
   const [publishing, setPublishing] = useState(false);
 
   const { course } = useCourse(createdCourseId ?? undefined);
+
+  // Cover image
+  const coverImageRef = useRef<HTMLInputElement>(null);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (course?.coverImageUrl) setCoverImageUrl(course.coverImageUrl);
+  }, [course?.coverImageUrl]);
+
+  const handleCoverImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !createdCourseId) return;
+    if (!file.type.match(/^image\/(jpeg|png|webp)$/)) {
+      dispatch(pushToast({ tone: "warning", title: "Invalid file", message: "Use JPG, PNG or WebP." }));
+      return;
+    }
+    setUploadingCover(true);
+    try {
+      const previewUrl = URL.createObjectURL(file);
+      setCoverImageUrl(previewUrl);
+      const updated = await apiRequest<CourseSummary>(`/courses/${createdCourseId}`, {
+        method: "PATCH",
+        body: { coverImageUrl: previewUrl },
+      });
+      setCoverImageUrl(updated.coverImageUrl ?? previewUrl);
+      dispatch(pushToast({ tone: "success", title: "Cover image updated" }));
+    } catch {
+      dispatch(pushToast({ tone: "warning", title: "Couldn't update cover image" }));
+    } finally {
+      setUploadingCover(false);
+      if (coverImageRef.current) coverImageRef.current.value = "";
+    }
+  };
 
   // ── Course creation ────────────────────────────────────────────────
   const handleCreate = async () => {
@@ -176,6 +210,64 @@ export default function NewCoursePage() {
           Courses → Edit.
         </p>
       </section>
+
+      {/* ── Cover image — unlocks after course is created ─────────────── */}
+      {createdCourseId ? (
+        <section className="settings-card">
+          <h2>Cover image</h2>
+          <p className="settings-sub">Shown on the course card in the catalogue. JPG, PNG or WebP.</p>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+            <div style={{
+              width: 160, height: 100, borderRadius: 10, overflow: "hidden", flexShrink: 0,
+              background: "var(--color-light-gray)", border: "1px solid var(--color-stroke)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {coverImageUrl
+                ? <img src={coverImageUrl} alt="Course cover" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                : <Icon name="image" size={28} style={{ opacity: 0.3 }} />}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <input
+                ref={coverImageRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                style={{ display: "none" }}
+                onChange={handleCoverImageChange}
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="upload"
+                disabled={uploadingCover}
+                onClick={() => coverImageRef.current?.click()}
+              >
+                {uploadingCover ? "Uploading…" : coverImageUrl ? "Change image" : "Upload image"}
+              </Button>
+              {coverImageUrl && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon="x"
+                  disabled={uploadingCover}
+                  onClick={async () => {
+                    try {
+                      await apiRequest(`/courses/${createdCourseId}`, { method: "PATCH", body: { coverImageUrl: null } });
+                      setCoverImageUrl(null);
+                      dispatch(pushToast({ tone: "success", title: "Cover image removed" }));
+                    } catch {
+                      dispatch(pushToast({ tone: "warning", title: "Couldn't remove cover image" }));
+                    }
+                  }}
+                >
+                  Remove
+                </Button>
+              )}
+            </div>
+          </div>
+        </section>
+      ) : (
+        <LockedPlaceholder title="Cover image" />
+      )}
 
       {/* ── Batches — same component as edit page, real API ──────────── */}
       {createdCourseId

@@ -401,7 +401,7 @@ export function CourseStructureEditor({ courseId, initialSemesters, onStructureC
     }
     const body: Record<string, unknown> = {
       title: lessonTitle.trim(),
-      youtubeVideoId: videoId,
+      youtubeVideoId: videoId ? `https://www.youtube.com/watch?v=${videoId}` : null,
       description: lessonDescription.trim(),
       attachmentIds: allAttachmentIds,
     };
@@ -634,10 +634,6 @@ export function CourseStructureEditor({ courseId, initialSemesters, onStructureC
                     <div style={{ fontSize: 12, color: "var(--color-muted)", fontFamily: "var(--font-body)" }}>{lessons.length} {lessons.length === 1 ? "lesson" : "lessons"}</div>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <input ref={subjectImageInputRef} type="file" accept="image/jpeg,image/png" style={{ display: "none" }} onChange={uploadSubjectImage} />
-                    <Button size="sm" variant="secondary" icon="image" disabled={uploadingSubjectImage} onClick={() => subjectImageInputRef.current?.click()}>
-                      {uploadingSubjectImage ? "…" : "Image"}
-                    </Button>
                     <SavedBadge visible={lessonSaved} />
                     {!showLessonForm && <Button size="sm" icon="plus" onClick={openAddLesson}>Add lesson</Button>}
                   </div>

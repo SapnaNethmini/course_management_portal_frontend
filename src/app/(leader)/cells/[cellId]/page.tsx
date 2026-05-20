@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -11,7 +11,7 @@ import { CellTabs } from "@/components/cells/CellTabs";
 import { CellMembersPanel } from "@/components/cells/CellMembersPanel";
 import { CellReportCard } from "@/components/cells/CellReportCard";
 import { useCell } from "@/application/hooks/useCell";
-import { listCellReports } from "@/lib/mock/cellReports"; // Sprint 07 — cell reports
+import { useCellReports } from "@/application/hooks/useCellReports";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
 
 export default function LeaderCellDetailPage() {
@@ -19,12 +19,7 @@ export default function LeaderCellDetailPage() {
   const params = useParams();
   const cellId = (params?.cellId as string) ?? "";
   const { cell, loading: cellLoading, error: cellError } = useCell(cellId || undefined);
-  const reports = useMemo(
-    () =>
-      listCellReports({ cellId })
-        .sort((a, b) => new Date(b.meetingDate).getTime() - new Date(a.meetingDate).getTime()),
-    [cellId],
-  );
+  const { reports, loading: reportsLoading } = useCellReports(cellId || undefined);
 
   const user = useAppSelector((s) => s.session.user);
   const canFile = (user?.roles?.includes("leader") || user?.roles?.includes("g12") || user?.roles?.includes("super_admin")) ?? false;
@@ -89,20 +84,16 @@ export default function LeaderCellDetailPage() {
 
       {tab === "reports" && (
         <div>
-          {reports.length === 0 ? (
-            <EmptyState
-              icon="file-text"
-              title="No reports yet"
-              message="File your first cell report to start tracking attendance, satisfaction, and meeting notes."
-            />
+          {reportsLoading ? (
+            <div style={{ textAlign: "center", padding: 32 }}><Icon name="loader" size={20} style={{ color: "var(--color-muted)" }} /></div>
+          ) : reports.length === 0 ? (
+            <EmptyState icon="file-text" title="No reports yet"
+              message="File your first cell report to start tracking attendance, satisfaction, and meeting notes." />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
               {reports.map((r) => (
-                <CellReportCard
-                  key={r.id}
-                  report={r}
-                  onClick={() => router.push(`/cells/${cell.id}/reports/${r.id}`)}
-                />
+                <CellReportCard key={r.id} report={r as unknown as Parameters<typeof CellReportCard>[0]["report"]}
+                  onClick={() => router.push(`/cells/${cell.id}/reports/${r.id}`)} />
               ))}
             </div>
           )}

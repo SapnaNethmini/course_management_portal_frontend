@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useCell } from "@/application/hooks/useCell";
-import { listCellReports, type CellReport } from "@/lib/mock/cellReports";
+import { useCellReports, type CellReport } from "@/application/hooks/useCellReports";
 
 const TYPE_LABEL: Record<"g12" | "care" | "children" | "outreach", string> = {
   g12: "G12",
@@ -26,14 +26,7 @@ export default function MyCellDetailPage() {
   const params = useParams();
   const cellId = (params?.cellId as string) ?? "";
   const { cell, loading } = useCell(cellId || undefined);
-  // Cell reports wired in Sprint 07 — keep mock for now
-  const reports = useMemo<CellReport[]>(
-    () =>
-      listCellReports({ cellId, voided: false })
-        .sort((a, b) => new Date(b.meetingDate).getTime() - new Date(a.meetingDate).getTime())
-        .slice(0, 10),
-    [cellId],
-  );
+  const { reports } = useCellReports(cellId || undefined);
 
   if (loading) return <div className="page" style={{ textAlign: "center", padding: 48 }}><Icon name="loader" size={24} style={{ color: "var(--color-muted)" }} /></div>;
 
@@ -131,27 +124,24 @@ function MemberRow({ uid, displayName, isLeader }: { uid: string; displayName: s
 }
 
 function ReportRow({ report }: { report: CellReport }) {
+  const presentCount = (report.attendance ?? []).filter((a) => a.status === "present").length;
   return (
     <div className="report-card readonly">
       <div>
         <div className="title">
           {report.didMeet
-            ? `Meeting on ${formatDate(report.meetingDate)}`
-            : `Did not meet — ${formatDate(report.meetingDate)}`}
+            ? `Meeting on ${formatDate(report.date)}`
+            : `Did not meet — ${formatDate(report.date)}`}
         </div>
         <div className="meta">
-          <span>
-            <Icon name="user" size={11} /> Filed by {report.filedBy}
-          </span>
-          {report.didMeet && report.attendance.length > 0 && (
+          {report.didMeet && (report.attendance?.length ?? 0) > 0 && (
             <span>
-              <Icon name="users" size={11} /> {report.attendance.filter((a) => a.status === "present").length} /{" "}
-              {report.attendance.length} present
+              <Icon name="users" size={11} /> {presentCount} / {report.attendance?.length} present
             </span>
           )}
-          {report.subjectKind === "other" && report.subjectTopic && (
+          {report.subjectDiscussed === "other" && report.otherSubjectReason && (
             <span>
-              <Icon name="book-open" size={11} /> {report.subjectTopic}
+              <Icon name="book-open" size={11} /> {report.otherSubjectReason}
             </span>
           )}
         </div>
@@ -159,12 +149,8 @@ function ReportRow({ report }: { report: CellReport }) {
       <div className="right">
         <span style={{ display: "inline-flex", gap: 2 }}>
           {[1, 2, 3, 4, 5].map((i) => (
-            <Icon
-              key={i}
-              name="star"
-              size={12}
-              style={{ color: i <= report.satisfaction ? "var(--color-accent)" : "var(--color-stroke)" }}
-            />
+            <Icon key={i} name="star" size={12}
+              style={{ color: i <= (report.satisfactionRate ?? 0) ? "var(--color-accent)" : "var(--color-stroke)" }} />
           ))}
         </span>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--color-muted)", textTransform: "uppercase" }}>

@@ -123,11 +123,9 @@ export function useNotifications({ pollUnread = false }: UseNotificationsOptions
     setItems((prev) => prev.map((n) => n.read ? n : { ...n, read: true, readAt: new Date().toISOString() }));
     setUnreadCount(0);
     try {
-      const res = await apiRequest<{ markedCount: number }>(`/me/notifications/read-all`, { method: "POST" });
-      dispatch(pushToast({
-        tone: "success",
-        title: `${res.markedCount ?? previouslyUnread.length} marked as read`,
-      }));
+      const res = await apiRequest<{ markedCount?: number } | undefined>(`/me/notifications/read-all`, { method: "POST" });
+      const count = (res as { markedCount?: number } | undefined)?.markedCount ?? previouslyUnread.length;
+      dispatch(pushToast({ tone: "success", title: `${count} notification${count === 1 ? "" : "s"} marked as read` }));
     } catch {
       // Rollback.
       setItems((prev) => prev.map((n) => {

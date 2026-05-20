@@ -32,6 +32,7 @@ export interface CellReportPayload {
   visitorCount?: number;
   followUpNotes?: string;
   satisfaction: 1 | 2 | 3 | 4 | 5;
+  photos?: File[]; // optional photo files — uploaded separately before POST
 }
 
 const STEPS = [

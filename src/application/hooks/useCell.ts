@@ -19,7 +19,20 @@ export function useCell(cellId: string | undefined) {
     setLoading(true);
     try {
       const data = await apiRequest<CellDetail>(`/cells/${cellId}`);
-      setCell(data);
+
+      // Enrich leaderName if backend didn't return it or returned the UID.
+      let enriched = data;
+      if (data.leaderUid && (!data.leaderName || data.leaderName === data.leaderUid)) {
+        try {
+          const leader = await apiRequest<{ firstName?: string; lastName?: string }>(
+            `/users/${data.leaderUid}`,
+          );
+          const name = [leader.firstName, leader.lastName].filter(Boolean).join(" ").trim();
+          if (name) enriched = { ...data, leaderName: name };
+        } catch { /* silent — fall back to UID if user fetch fails */ }
+      }
+
+      setCell(enriched);
       setError(null);
     } catch (err) {
       if (err instanceof ApiRequestError) setError(err);

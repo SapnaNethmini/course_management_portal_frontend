@@ -1,39 +1,34 @@
 "use client";
 
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { Icon } from "@/components/ui/Icon";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ReportViewer } from "@/components/cells/ReportViewer";
 import { VoidReportDialog } from "@/components/cells/VoidReportDialog";
-import { useAppDispatch } from "@/application/hooks/useAppDispatch";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
-import { pushToast } from "@/application/slices/uiSlice";
-import { getCellById } from "@/lib/mock/cells";
-import { getCellReportById, voidCellReport, type CellReport } from "@/lib/mock/cellReports";
+import { useCellReport, useVoidReport } from "@/application/hooks/useCellReports";
 
 export default function CellReportViewPage() {
   const router = useRouter();
   const params = useParams();
-  const dispatch = useAppDispatch();
   const user = useAppSelector((s) => s.session.user);
-  const cellId = (params?.cellId as string) ?? "";
+  const cellId  = (params?.cellId  as string) ?? "";
   const reportId = (params?.reportId as string) ?? "";
 
-  const cell = useMemo(() => getCellById(cellId), [cellId]);
-  const [report, setReport] = useState<CellReport | undefined>(undefined);
+  const { report, loading } = useCellReport(cellId || undefined, reportId || undefined);
+  const { voidReport, busy: voidBusy } = useVoidReport();
   const [voidOpen, setVoidOpen] = useState(false);
-
-  useEffect(() => {
-    setReport(getCellReportById(reportId));
-  }, [reportId]);
 
   const canVoid =
     !!report &&
     !report.voided &&
     ((user?.roles?.includes("leader") || user?.roles?.includes("g12") || user?.roles?.includes("super_admin")) ?? false);
 
-  if (!cell || !report) {
+  if (loading) return <div className="page" style={{ textAlign: "center", padding: 48 }}><Icon name="loader" size={24} style={{ color: "var(--color-muted)" }} /></div>;
+
+  if (!report) {
     return (
       <div className="page">
         <EmptyState icon="alert-circle" title="Report not found" message="It may have been removed or you don't have access." />
@@ -41,43 +36,34 @@ export default function CellReportViewPage() {
     );
   }
 
-  const doVoid = (reason: string) => {
-    const updated = voidCellReport(report.id, reason);
-    if (updated) {
-      setReport(updated);
-      dispatch(pushToast({ tone: "warning", title: "Report voided", message: "It will be excluded from analytics." }));
-    }
-    setVoidOpen(false);
+  const handleVoid = async (reason: string) => {
+    const ok = await voidReport(cellId, reportId, reason);
+    if (ok) { setVoidOpen(false); router.push(`/cells/${cellId}`); }
   };
 
   return (
     <div className="page">
-      <Button variant="ghost" size="sm" icon="arrow-left" onClick={() => router.push(`/cells/${cell.id}`)}>
-        Back to {cell.name}
-      </Button>
-
-      <header
-        className="page-header"
-        style={{ marginTop: 12, marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}
-      >
-        <div>
-          <h1 style={{ margin: 0, fontFamily: "var(--font-heading)", fontSize: 28, color: "var(--color-primary)" }}>
-            Cell report
-          </h1>
-          <p style={{ margin: "6px 0 0", fontFamily: "var(--font-body)", fontSize: 14, color: "var(--color-body-green)" }}>
-            For <b>{cell.name}</b>
-          </p>
-        </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 20 }}>
+        <Button variant="ghost" size="sm" icon="arrow-left" onClick={() => router.push(`/cells/${cellId}`)}>
+          Back to cell
+        </Button>
         {canVoid && (
-          <Button variant="destructive" icon="trash-2" onClick={() => setVoidOpen(true)}>
+          <Button variant="ghost" size="sm" icon="x-circle" onClick={() => setVoidOpen(true)}
+            style={{ color: "var(--color-error)" }}>
             Void report
           </Button>
         )}
-      </header>
+      </div>
 
-      <ReportViewer report={report} />
+      <ReportViewer report={report as unknown as Parameters<typeof ReportViewer>[0]["report"]} />
 
-      <VoidReportDialog open={voidOpen} onClose={() => setVoidOpen(false)} onConfirm={doVoid} />
+      {voidOpen && (
+        <VoidReportDialog
+          open={voidOpen}
+          onConfirm={handleVoid}
+          onClose={() => setVoidOpen(false)}
+        />
+      )}
     </div>
   );
 }

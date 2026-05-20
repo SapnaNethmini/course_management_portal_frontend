@@ -105,7 +105,7 @@ export default function PublicCoursesPage() {
                       className="course-card"
                       onClick={() => router.push(`/courses/${c.id}`)}
                     >
-                      <CourseCover title={c.title} alt={c.title} />
+                      <CourseCover imageUrl={c.coverImageUrl} title={c.title} alt={c.title} />
                       <div className="body">
                         <div className="meta">
                           <span><Icon name="layers" size={12} />{c.semesterCount} {c.semesterCount === 1 ? "semester" : "semesters"}</span>

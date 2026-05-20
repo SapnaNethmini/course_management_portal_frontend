@@ -72,7 +72,7 @@ export default function BrowseCoursesPage() {
                   style={{ cursor: "pointer" }}
                   onClick={() => router.push(`/browse-courses/${c.id}`)}
                 >
-                  <CourseCover title={c.title} alt={c.title} />
+                  <CourseCover imageUrl={c.coverImageUrl} title={c.title} alt={c.title} />
                   <div className="body">
                     <div className="meta">
                       <span>

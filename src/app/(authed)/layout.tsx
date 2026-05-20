@@ -24,6 +24,7 @@ const TITLE_MAP: Array<{ test: RegExp; title: string }> = [
   { test: /^\/my-cells\/[^/]+/, title: "Cell" },
   { test: /^\/my-cells/, title: "My Cells" },
   { test: /^\/profile/, title: "Profile" },
+  { test: /^\/notifications/, title: "Notifications" },
 ];
 
 /**
@@ -43,41 +44,11 @@ export default function AuthedLayout({ children }: { children: React.ReactNode }
   const pathname = usePathname() ?? "";
   const title = TITLE_MAP.find((m) => m.test.test(pathname))?.title ?? "TCCR";
   const user = useSessionUser();
-  const roles = useAppSelector((s) => s.session.user?.roles ?? []);
-
-  // /my-requests and /profile keep the user's active role sidebar context
-  // /profile keeps the user's active role sidebar so "Profile" stays
-  // highlighted in their role's nav. /my-requests is a member-section page
-  // and always shows MEMBER_NAV regardless of additional roles.
-  const keepRoleNav = pathname.startsWith("/profile");
-
+  // Profile and notifications are personal account pages — always show MEMBER_NAV.
+  // They are not role-specific surfaces; the content is identical regardless of role.
   let navItems: NavItem[] = MEMBER_NAV;
   let roleLabel = "Member";
   let dashboardHref = "/home";
-
-  if (keepRoleNav) {
-    if (roles.includes("super_admin")) {
-      navItems = SUPERADMIN_NAV;
-      roleLabel = "Super Admin";
-      dashboardHref = "/super-admin/dashboard";
-    } else if (roles.includes("admin")) {
-      navItems = ADMIN_NAV;
-      roleLabel = "Administrator";
-      dashboardHref = "/admin/dashboard";
-    } else if (roles.includes("g12")) {
-      navItems = G12_NAV;
-      roleLabel = "G12 Leader";
-      dashboardHref = "/g12/dashboard";
-    } else if (roles.includes("leader")) {
-      navItems = LEADER_NAV;
-      roleLabel = "Leader";
-      dashboardHref = "/leader/dashboard";
-    } else if (roles.includes("student")) {
-      navItems = STUDENT_NAV;
-      roleLabel = "Student";
-      dashboardHref = "/dashboard";
-    }
-  }
 
   return (
     <AuthGuard allowedRoles={["member", "student", "leader", "g12", "admin", "super_admin"]}>

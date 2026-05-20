@@ -67,7 +67,25 @@ export function useEnrollments() {
         cursor = data.nextCursor ?? undefined;
         pageNo += 1;
       } while (cursor && pageNo < MAX_PAGES);
-      setItems(collected);
+
+      // Enrich with course names for enrollments where backend omits courseName.
+      const missing = [...new Set(
+        collected.filter((e) => !e.courseName).map((e) => e.courseId),
+      )];
+      if (missing.length) {
+        const nameMap = new Map<string, string>();
+        await Promise.allSettled(
+          missing.map(async (cid) => {
+            const c = await apiRequest<{ name?: string; title?: string }>(`/courses/${cid}`).catch(() => null);
+            if (c) nameMap.set(cid, c.name ?? c.title ?? cid);
+          }),
+        );
+        setItems(collected.map((e) =>
+          e.courseName ? e : { ...e, courseName: nameMap.get(e.courseId) ?? e.courseId },
+        ));
+      } else {
+        setItems(collected);
+      }
     } catch {
       dispatch(pushToast({ tone: "warning", title: "Failed to load enrollments" }));
     } finally {
@@ -76,7 +94,10 @@ export function useEnrollments() {
   }, [dispatch]);
 
   useEffect(() => {
+    // Only students have enrollments — skip the API call for pure members to
+    // avoid a 403 FORBIDDEN from GET /enrollments/mine.
     if (!user || !auth.currentUser) return;
+    if (!user.roles?.includes("student")) { setLoading(false); return; }
     fetchAll();
   }, [user, fetchAll]);
 

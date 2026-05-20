@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { RowMenu } from "@/components/ui/RowMenu";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { RoleBadgeStack } from "@/components/user/RoleBadgeStack";
 import { useAppDispatch } from "@/application/hooks/useAppDispatch";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
@@ -58,6 +59,10 @@ export default function SuperAdminStudentsPage() {
 
   const [allStudents, setAllStudents] = useState<StudentUser[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
+  const [promoting, setPromoting] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{ uid: string; name: string; role: "leader" | "g12" } | null>(null);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 25;
   const [courseCountByStudent, setCourseCountByStudent] = useState<Record<string, {
     courseCount: number;
     loading: boolean;
@@ -74,14 +79,21 @@ export default function SuperAdminStudentsPage() {
         let cursor: string | undefined;
         const MAX_PAGES = 20;
         for (let i = 0; i < MAX_PAGES; i++) {
-          const params = new URLSearchParams({ role: "student", limit: "100" });
+          // V2: list ALL users so admins can promote any member to Leader/G12.
+          const params = new URLSearchParams({ limit: "100" });
           if (cursor) params.append("cursor", cursor);
           const data = await apiRequest<StudentListResponse>(`/users?${params}`);
           collected.push(...(data.items ?? []));
           cursor = data.nextCursor ?? undefined;
           if (!cursor) break;
         }
-        if (!cancelled) setAllStudents(collected);
+        // V2: Users page excludes admins + super_admins — they are managed
+        // from /super-admin/admins, not promoted from this list.
+        const nonAdmin = collected.filter((u) => {
+          const roles = u.roles ?? [];
+          return !roles.includes("admin") && !roles.includes("super_admin");
+        });
+        if (!cancelled) setAllStudents(nonAdmin);
       } catch (err) {
         if (err instanceof ApiRequestError && err.status !== 401) {
           dispatch(pushToast({ tone: "warning", title: "Failed to load students" }));
@@ -153,7 +165,7 @@ export default function SuperAdminStudentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allStudents.length, allStudents.map((s) => s.uid).join(",")]);
 
-  const students = useMemo(() => {
+  const filteredStudents = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return allStudents;
     return allStudents.filter((s) =>
@@ -162,9 +174,59 @@ export default function SuperAdminStudentsPage() {
     );
   }, [allStudents, query]);
 
+  // Reset to page 0 whenever the filter narrows.
+  useEffect(() => { setPage(0); }, [query]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredStudents.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const students = filteredStudents.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+  const hasPrev = safePage > 0;
+  const hasNext = safePage < totalPages - 1;
+
+  /**
+   * V2: PATCH /users/:uid/roles { role, action } — promote a Member to
+   * Leader or G12. The backend enforces caller-scoped permissions and
+   * returns the updated roles[] in the response.
+   */
+  const runPromote = async (uid: string, role: "leader" | "g12") => {
+    setPromoting(uid);
+    try {
+      const updated = await apiRequest<{ roles?: string[] } | undefined>(`/users/${uid}/roles`, {
+        method: "PATCH",
+        body: { role, action: "add" },
+      });
+      setAllStudents((prev) =>
+        prev.map((s) =>
+          s.uid === uid
+            ? { ...s, roles: updated?.roles ?? [...new Set([...(s.roles ?? []), role])] }
+            : s,
+        ),
+      );
+      dispatch(
+        pushToast({
+          tone: "success",
+          title: role === "g12" ? "Promoted to G12 Leader" : "Promoted to Leader",
+        }),
+      );
+    } catch (err) {
+      let title = "Promote failed";
+      let message: string | undefined;
+      if (err instanceof ApiRequestError) {
+        if (err.status === 403) title = "Not permitted";
+        else if (err.code === "LAST_SUPER_ADMIN") { title = "Cannot demote"; message = "This is the last super admin."; }
+        else if (err.status === 409) { title = "Role conflict"; message = err.message; }
+        else if (err.message) message = err.message;
+      }
+      dispatch(pushToast({ tone: "warning", title, message }));
+    } finally {
+      setPromoting(null);
+      setConfirm(null);
+    }
+  };
+
   const handleExport = () => {
     const headers = ["Name", "Email", "Status", "Courses", "Joined"];
-    const rows = students.map((s) => {
+    const rows = filteredStudents.map((s) => {
       const p = courseCountByStudent[s.uid];
       return [
         `${s.firstName} ${s.lastName}`,
@@ -223,11 +285,11 @@ export default function SuperAdminStudentsPage() {
       <div className="tbl-card">
         <table className="tbl" style={{ tableLayout: "fixed", width: "100%" }}>
           <colgroup>
-            <col style={{ width: "30%" }} />  {/* User */}
-            <col style={{ width: "22%" }} />  {/* Roles */}
-            <col style={{ width: "12%" }} />  {/* Status */}
+            <col style={{ width: "26%" }} />  {/* User */}
+            <col style={{ width: "18%" }} />  {/* Roles */}
+            <col style={{ width: "10%" }} />  {/* Status */}
             <col style={{ width: "12%" }} />  {/* Joined */}
-            <col style={{ width: "24%" }} />  {/* Action */}
+            <col style={{ width: "34%" }} />  {/* Action */}
           </colgroup>
           <thead>
             <tr>
@@ -261,30 +323,23 @@ export default function SuperAdminStudentsPage() {
             )}
             {students.map((s) => {
               const fullName = `${s.firstName} ${s.lastName}`.trim();
-              const roles = s.roles && s.roles.length > 0 ? s.roles : ["member", "student"];
+              // V2 spec: every authed user holds `member` at minimum. Backend
+              // sometimes omits it from roles[] — add it for display.
+              const rawRoles = s.roles && s.roles.length > 0 ? s.roles : ["student"];
+              const roles = rawRoles.includes("member") ? rawRoles : [...rawRoles, "member"];
               const hasLeader = roles.includes("leader");
               const hasG12 = roles.includes("g12");
 
-              // V2 promote actions — UI-only (mock toast). When backend grows
-              // a role-mutation endpoint, swap these in.
-              const promoteToLeader = () => {
-                dispatch(
-                  pushToast({
-                    tone: "success",
-                    title: "Promoted to Leader",
-                    message: `${fullName} now holds the Leader role (UI only — backend pending).`,
-                  }),
-                );
-              };
-              const promoteToG12 = () => {
-                dispatch(
-                  pushToast({
-                    tone: "success",
-                    title: "Promoted to G12 Leader",
-                    message: `${fullName} now holds the G12 role (UI only — backend pending).`,
-                  }),
-                );
-              };
+              const openPromoteLeader = () => setConfirm({ uid: s.uid, name: fullName || s.uid, role: "leader" });
+              const openPromoteG12 = () => setConfirm({ uid: s.uid, name: fullName || s.uid, role: "g12" });
+              const isThisRowPromoting = promoting === s.uid;
+              const isSuspended = s.status === "suspended";
+              // G12 supersedes Leader — once a user is G12, the Leader role is
+              // implied, so the "Make Leader" button is no longer relevant.
+              const showLeaderBtn = !hasLeader && !hasG12;
+              const showG12Btn = !hasG12;
+              const promoteDisabled = isThisRowPromoting || isSuspended;
+              const suspendedTitle = isSuspended ? "Reactivate the user before promoting" : undefined;
 
               return (
                 <tr key={s.uid}>
@@ -315,17 +370,23 @@ export default function SuperAdminStudentsPage() {
                   </td>
                   <td className="muted">{formatDate(s.createdAt)}</td>
                   <td style={{ textAlign: "right" }}>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" }}>
-                      {!hasLeader && (
-                        <Button size="sm" variant="ghost" icon="chevron-up" onClick={promoteToLeader}>
-                          Make Leader
-                        </Button>
-                      )}
-                      {hasLeader && !hasG12 && (
-                        <Button size="sm" icon="chevron-up" onClick={promoteToG12}>
-                          Make G12
-                        </Button>
-                      )}
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end", flexWrap: "nowrap", whiteSpace: "nowrap" }}>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end", minWidth: 240 }} title={suspendedTitle}>
+                        {showLeaderBtn ? (
+                          <Button size="sm" variant="ghost" icon="chevron-up" disabled={promoteDisabled} onClick={openPromoteLeader}>
+                            {isThisRowPromoting ? "…" : "Make Leader"}
+                          </Button>
+                        ) : (
+                          <span style={{ display: "inline-block", minWidth: 110 }} />
+                        )}
+                        {showG12Btn ? (
+                          <Button size="sm" icon="chevron-up" disabled={promoteDisabled} onClick={openPromoteG12}>
+                            {isThisRowPromoting ? "…" : "Make G12"}
+                          </Button>
+                        ) : (
+                          <span style={{ display: "inline-block", minWidth: 90 }} />
+                        )}
+                      </div>
                       <RowMenu
                         ariaLabel={`Actions for ${fullName}`}
                         items={[
@@ -343,7 +404,51 @@ export default function SuperAdminStudentsPage() {
             })}
           </tbody>
         </table>
+
+        {filteredStudents.length > PAGE_SIZE && (
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "12px 16px",
+            borderTop: "1px solid var(--color-stroke)",
+            fontFamily: "var(--font-body)",
+            fontSize: 13,
+            color: "var(--color-body-green)",
+            flexWrap: "wrap",
+            gap: 10,
+          }}>
+            <span>
+              Showing <b>{safePage * PAGE_SIZE + 1}</b>–<b>{Math.min((safePage + 1) * PAGE_SIZE, filteredStudents.length)}</b> of <b>{filteredStudents.length}</b>
+            </span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button size="sm" variant="secondary" icon="chevron-left" disabled={!hasPrev} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                Previous
+              </Button>
+              <Button size="sm" variant="secondary" iconAfter="chevron-right" disabled={!hasNext} onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}>
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
+
+      <ConfirmDialog
+        open={!!confirm}
+        title={
+          confirm?.role === "g12"
+            ? `Promote ${confirm?.name} to G12 Leader?`
+            : `Promote ${confirm?.name ?? ""} to Leader?`
+        }
+        message={
+          confirm
+            ? `This adds the ${confirm.role === "g12" ? "G12" : "Leader"} role to ${confirm.name}. Roles are additive — they keep their existing access. You can revert this from the user's profile later.`
+            : undefined
+        }
+        confirmLabel={confirm?.role === "g12" ? "Yes, promote to G12" : "Yes, promote to Leader"}
+        onConfirm={() => { if (confirm) runPromote(confirm.uid, confirm.role); }}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   );
 }

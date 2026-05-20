@@ -7,6 +7,7 @@ import { AuthGuard } from "@/components/auth/AuthGuard";
 import { SUPERADMIN_NAV, isLink } from "@/components/layout/RoleNav";
 import { useSessionUser } from "@/application/hooks/useSessionUser";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
+import { useSidebarCounts } from "@/application/hooks/useSidebarCounts";
 
 const TITLE_MAP: Array<{ test: RegExp; title: string }> = [
   { test: /^\/super-admin\/dashboard/, title: "Super Admin" },
@@ -18,7 +19,7 @@ const TITLE_MAP: Array<{ test: RegExp; title: string }> = [
   { test: /^\/super-admin\/students\/[^/]+/, title: "User" },
   { test: /^\/super-admin\/students/, title: "Users" },
   { test: /^\/super-admin\/registrations/, title: "Role Requests" },
-  { test: /^\/super-admin\/enrollments/, title: "Enrolments" },
+  { test: /^\/super-admin\/enrollments/, title: "Enrollments" },
   { test: /^\/super-admin\/courses/, title: "Courses" },
   { test: /^\/super-admin\/profile/, title: "Profile" },
   { test: /^\/super-admin\/audit-log/, title: "Audit Log" },
@@ -28,6 +29,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
   const pathname = usePathname() ?? "";
   const title = TITLE_MAP.find((m) => m.test.test(pathname))?.title ?? "Super Admin";
   const user = useSessionUser();
+  useSidebarCounts();
   const pendingRegistrations = useAppSelector((s) => s.ui.pendingRegistrations);
   const pendingEnrollments = useAppSelector((s) => s.ui.pendingEnrollments);
   const totalAdmins = useAppSelector((s) => s.ui.totalAdmins);

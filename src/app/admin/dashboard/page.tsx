@@ -109,23 +109,6 @@ export default function AdminDashboardPage() {
     { ico: "users",     label: "Users",                to: `${base}/students` },
   ], [base]);
 
-  const queues = useMemo(() => [
-    {
-      ico: "user-plus",
-      title: "Registrations queue",
-      body: "Approve sign-ups before students gain access to the platform.",
-      count: RQ.total,
-      to: `${base}/registrations`,
-    },
-    {
-      ico: "clipboard-list",
-      title: "Enrollments queue",
-      body: "Approve course-access requests from existing students.",
-      count: EQ.pendingCount,
-      to: `${base}/enrollments`,
-    },
-  ], [RQ.total, EQ.pendingCount, base]);
-
   // Build a real "recent activity" feed from pending queue items (newest first).
   const activity = useMemo(() => {
     const items: Array<{ ico: string; tone?: "s" | "w"; title: string; meta: string; when: string; ts: number }> = [];
@@ -210,28 +193,6 @@ export default function AdminDashboardPage() {
               <Icon name={q.ico} size={18} />
             </div>
             <div className="qa-label">{q.label}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="section-h">
-        <h3>Approval queues</h3>
-      </div>
-      <div className="queue-grid">
-        {queues.map((q) => (
-          <div className="queue-card" key={q.title} onClick={() => router.push(q.to)}>
-            <div className="queue-ico">
-              <Icon name={q.ico} size={22} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <h3>{q.title}</h3>
-              <p>{q.body}</p>
-            </div>
-            <div className="queue-count">
-              <b>{q.count}</b>
-              <span>pending</span>
-            </div>
-            <Icon name="arrow-right" size={18} style={{ color: "#41574A" }} />
           </div>
         ))}
       </div>

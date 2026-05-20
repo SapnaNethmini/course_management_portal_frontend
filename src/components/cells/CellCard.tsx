@@ -34,10 +34,12 @@ export function CellCard({ cell, readonly, onClick }: Props) {
       <div className="top">
         <div style={{ flex: 1, minWidth: 0 }}>
           <h3>{cell.name}</h3>
-          <div className="leader">
-            <Avatar name={cell.leaderName ?? "?"} size="sm" />
-            {cell.leaderName ?? "—"}
-          </div>
+          {cell.leaderName && cell.leaderName !== cell.leaderUid && (
+            <div className="leader">
+              <Avatar name={cell.leaderName} size="sm" />
+              {cell.leaderName}
+            </div>
+          )}
         </div>
         <span className={`cell-type ${cell.type}`}>{TYPE_LABEL[cell.type]}</span>
       </div>

@@ -1,10 +1,9 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { Input } from "@/components/ui/Input";
 import { Avatar } from "@/components/ui/Avatar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useCell, useCellMembers } from "@/application/hooks/useCell";
@@ -14,14 +13,48 @@ import { apiRequest } from "@/infrastructure/api/request";
 /**
  * Cell Members page — Leader / G12 / Admin only.
  *
- * Add members: search existing TCCR users by name → select → POST /cells/:id/members.
- * The user search (GET /users?search=) is used when available; backend is still
- * implementing the full directory search — for now shows the search input.
+ * Add members: typeahead `GET /users?name=<prefix>&limit=20` → select →
+ * `POST /cells/:id/members { userUids }`. Backend auto-scopes Leader/G12
+ * callers to approved, non-admin users.
  *
  * Remove: DELETE /cells/:id/members/:uid with confirmation.
  */
 
-interface UserResult { uid: string; firstName: string; lastName: string; email: string; profilePhotoUrl?: string | null; }
+interface UserResult {
+  uid: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  profilePhotoUrl?: string | null;
+  roles?: string[];
+}
+
+/** Tolerate every common envelope returned by GET /users. */
+function unwrapUsers(res: unknown): UserResult[] {
+  let raw: unknown[] = [];
+  if (Array.isArray(res)) raw = res;
+  else if (res && typeof res === "object") {
+    const obj = res as Record<string, unknown>;
+    if (Array.isArray(obj.items)) raw = obj.items;
+    else if (Array.isArray(obj.data)) raw = obj.data;
+    else if (Array.isArray(obj.results)) raw = obj.results;
+    else if (Array.isArray(obj.users)) raw = obj.users;
+  }
+  return raw.map((r) => {
+    const u = r as Record<string, unknown>;
+    return {
+      uid: String(u.uid ?? u.id ?? u.userId ?? u.user_id ?? ""),
+      firstName: typeof u.firstName === "string" ? u.firstName : (typeof u.first_name === "string" ? u.first_name : undefined),
+      lastName:  typeof u.lastName  === "string" ? u.lastName  : (typeof u.last_name  === "string" ? u.last_name  : undefined),
+      email:     typeof u.email     === "string" ? u.email     : undefined,
+      profilePhotoUrl:
+        typeof u.profilePhotoUrl === "string" ? u.profilePhotoUrl
+        : typeof u.profile_photo_url === "string" ? u.profile_photo_url
+        : typeof u.avatar === "string" ? u.avatar : null,
+      roles: Array.isArray(u.roles) ? (u.roles as string[]) : [],
+    };
+  }).filter((u) => u.uid);
+}
 
 export default function CellMembersPage() {
   const router = useRouter();
@@ -44,23 +77,35 @@ export default function CellMembersPage() {
     displayName: m.displayName ?? String(m),
   }));
 
-  const handleSearch = async () => {
-    if (!search.trim()) return;
+  // Debounced typeahead — fires on every keystroke once ≥2 chars typed.
+  useEffect(() => {
+    const term = search.trim();
+    if (term.length < 2) { setResults([]); return; }
+    let cancelled = false;
     setSearching(true);
-    try {
-      const res = await apiRequest<{ items?: UserResult[] } | UserResult[]>(
-        `/users?search=${encodeURIComponent(search.trim())}&limit=10`,
-      );
-      const list = Array.isArray(res) ? res : ((res as { items?: UserResult[] }).items ?? []);
-      // Filter out users already in the cell
-      const memberUids = new Set(members.map((m) => m.uid));
-      setResults(list.filter((u) => !memberUids.has(u.uid)));
-    } catch {
-      setResults([]);
-    } finally {
-      setSearching(false);
-    }
-  };
+    const timer = setTimeout(async () => {
+      try {
+        // V2 spec: GET /users?name=<prefix> — firstName prefix search.
+        const res = await apiRequest<unknown>(`/users?name=${encodeURIComponent(term)}&limit=20`);
+        if (cancelled) return;
+        const list = unwrapUsers(res);
+        const memberUids = new Set(members.map((m) => m.uid));
+        setResults(
+          list.filter((u) => {
+            if (memberUids.has(u.uid)) return false;
+            const roles = u.roles ?? [];
+            return !roles.includes("admin") && !roles.includes("super_admin");
+          }),
+        );
+      } catch {
+        if (!cancelled) setResults([]);
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   const toggleSelect = (u: UserResult) => {
     setSelected((prev) =>
@@ -109,31 +154,42 @@ export default function CellMembersPage() {
         <div className="settings-card" style={{ marginBottom: 20 }}>
           <h2 style={{ marginBottom: 8 }}>Add members</h2>
           <p style={{ margin: "0 0 14px", fontFamily: "var(--font-body)", fontSize: 13, color: "var(--color-body-green)" }}>
-            Search for existing TCCR members by name or email and add them to this cell.
+            Start typing a first name — suggestions appear as you type. Type at least 2 characters.
           </p>
-          <div style={{ display: "flex", gap: 10 }}>
-            <div style={{ flex: 1 }}>
-              <Input placeholder="Search by name or email…" value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()} />
-            </div>
-            <Button variant="secondary" icon="search" disabled={searching || !search.trim()} onClick={handleSearch}>
-              {searching ? "Searching…" : "Search"}
-            </Button>
+          <div style={{ position: "relative" }}>
+            <Icon name="search" size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--color-muted)", pointerEvents: "none" }} />
+            <input
+              className="input"
+              placeholder="e.g. Sapna"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ paddingLeft: 36, width: "100%" }}
+            />
           </div>
+          {searching && (
+            <div style={{ marginTop: 8, fontFamily: "var(--font-body)", fontSize: 12, color: "var(--color-muted)" }}>
+              Searching…
+            </div>
+          )}
+          {!searching && search.trim().length >= 2 && results.length === 0 && (
+            <div style={{ marginTop: 8, fontFamily: "var(--font-body)", fontSize: 12, color: "var(--color-muted)" }}>
+              No matches for &ldquo;{search.trim()}&rdquo;.
+            </div>
+          )}
 
           {/* Search results */}
           {results.length > 0 && (
             <div style={{ marginTop: 12, border: "1px solid var(--color-stroke)", borderRadius: 10, overflow: "hidden" }}>
               {results.map((u) => {
                 const isSelected = selected.some((s) => s.uid === u.uid);
+                const fullName = [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || u.email || u.uid;
                 return (
                   <div key={u.uid} onClick={() => toggleSelect(u)}
                     style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: isSelected ? "rgba(188,233,85,0.12)" : "#fff", cursor: "pointer", borderBottom: "1px solid var(--color-stroke-2)" }}>
-                    <Avatar src={u.profilePhotoUrl ?? undefined} name={`${u.firstName} ${u.lastName}`} size="sm" />
+                    <Avatar src={u.profilePhotoUrl ?? undefined} name={fullName} size="sm" />
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontFamily: "var(--font-body)", fontWeight: 600, fontSize: 14, color: "var(--color-primary)" }}>{u.firstName} {u.lastName}</div>
-                      <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--color-muted)" }}>{u.email}</div>
+                      <div style={{ fontFamily: "var(--font-body)", fontWeight: 600, fontSize: 14, color: "var(--color-primary)" }}>{fullName}</div>
+                      {u.email && <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--color-muted)" }}>{u.email}</div>}
                     </div>
                     {isSelected && <Icon name="check-circle" size={18} style={{ color: "var(--color-accent)" }} />}
                   </div>

@@ -6,8 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/Input";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { useAppDispatch } from "@/application/hooks/useAppDispatch";
-import { pushToast } from "@/application/slices/uiSlice";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useCell } from "@/application/hooks/useCell";
 import { useCellMutations, type CellType } from "@/application/hooks/useCells";
 
@@ -16,15 +15,16 @@ const TYPES: CellType[] = ["care", "outreach", "children", "g12"];
 export default function EditCellPage() {
   const router = useRouter();
   const params = useParams();
-  const dispatch = useAppDispatch();
   const cellId = (params?.cellId as string) ?? "";
   const { cell, loading } = useCell(cellId || undefined);
-  const { updateCell } = useCellMutations();
+  const { updateCell, archiveCell } = useCellMutations();
 
   const [name, setName] = useState("");
   const [area, setArea] = useState("");
   const [type, setType] = useState<CellType>("care");
   const [saving, setSaving] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   useEffect(() => {
     if (cell) { setName(cell.name); setArea(cell.area); setType(cell.type); }
@@ -92,11 +92,32 @@ export default function EditCellPage() {
         </div>
       </form>
 
-      <div style={{ marginTop: 18 }}>
+      <div style={{ marginTop: 18, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <Button variant="ghost" icon="users" onClick={() => router.push(`/cells/${cell.id}/members`)}>
           Manage members
         </Button>
+        <span style={{ flex: 1 }} />
+        <Button variant="ghost" icon="archive" disabled={archiving} onClick={() => setArchiveOpen(true)}
+          style={{ color: "var(--color-error)" }}>
+          Archive cell
+        </Button>
       </div>
+
+      <ConfirmDialog
+        open={archiveOpen}
+        title={`Archive ${cell.name}?`}
+        message="Archived cells are hidden from listings and stop receiving reports. You can restore later from the admin console."
+        confirmLabel="Yes, archive"
+        destructive
+        onConfirm={async () => {
+          setArchiving(true);
+          const ok = await archiveCell(cell.id);
+          setArchiving(false);
+          setArchiveOpen(false);
+          if (ok) router.push("/cells");
+        }}
+        onCancel={() => setArchiveOpen(false)}
+      />
     </div>
   );
 }

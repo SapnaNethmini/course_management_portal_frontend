@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAppDispatch } from "./useAppDispatch";
-import { pushToast } from "@/application/slices/uiSlice";
+import { pushToast, setPendingRegistrations } from "@/application/slices/uiSlice";
 import { apiRequest, ApiRequestError } from "@/infrastructure/api/request";
 
 export interface RoleRequestQueueItem {
@@ -128,6 +128,16 @@ export function useRoleRequestQueue() {
           status,
           search,
         }));
+
+        // Drive the sidebar "Role Requests" badge. The badge tracks the
+        // Member→Student approval queue specifically, so count enriched items
+        // with status=pending AND requestedRole=student.
+        if (status === "pending") {
+          const studentPending = enriched.filter(
+            (it) => it.status === "pending" && (it.requestedRole ?? "").toLowerCase() === "student",
+          ).length;
+          dispatch(setPendingRegistrations(studentPending));
+        }
       } catch {
         setState((s) => ({ ...s, loading: false }));
       }

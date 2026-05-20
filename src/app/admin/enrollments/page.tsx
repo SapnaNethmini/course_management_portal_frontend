@@ -43,7 +43,9 @@ export default function AdminEnrollmentsPage() {
           </h1>
           <div className="greeting">
             <b style={{ color: "#152A24" }}>{Q.total}</b> total ·{" "}
-            <b style={{ color: "#152A24" }}>{Q.pendingCount}</b> pending on this page.
+            <b style={{ color: "#152A24" }}>{Q.pendingCount}</b> pending ·{" "}
+            <b style={{ color: "#152A24" }}>{Q.approvedCount}</b> approved ·{" "}
+            <b style={{ color: "#152A24" }}>{Q.rejectedCount}</b> rejected.
             Approving unlocks course materials for the student.
           </div>
         </div>
@@ -67,7 +69,7 @@ export default function AdminEnrollmentsPage() {
         </div>
       </div>
 
-      {/* Search */}
+      {/* Search + status filter */}
       <div className="audit-toolbar">
         <div className="audit-search">
           <Icon name="search" size={16} />
@@ -76,6 +78,21 @@ export default function AdminEnrollmentsPage() {
             value={Q.search}
             onChange={(e) => Q.setSearch(e.target.value)}
           />
+        </div>
+        <div className="audit-cats">
+          {(["pending", "approved", "rejected", "all"] as const).map((s) => (
+            <button
+              key={s}
+              className={`chip${Q.statusFilter === s ? " active" : ""}`}
+              onClick={() => Q.setStatusFilter(s)}
+            >
+              {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+              {s === "pending"  && Q.pendingCount  > 0 && ` (${Q.pendingCount})`}
+              {s === "approved" && Q.approvedCount > 0 && ` (${Q.approvedCount})`}
+              {s === "rejected" && Q.rejectedCount > 0 && ` (${Q.rejectedCount})`}
+              {s === "all" && ` (${Q.total})`}
+            </button>
+          ))}
         </div>
       </div>
 

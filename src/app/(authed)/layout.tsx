@@ -3,15 +3,7 @@
 import { usePathname } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { AuthGuard } from "@/components/auth/AuthGuard";
-import {
-  MEMBER_NAV,
-  STUDENT_NAV,
-  LEADER_NAV,
-  G12_NAV,
-  ADMIN_NAV,
-  SUPERADMIN_NAV,
-  type NavItem,
-} from "@/components/layout/RoleNav";
+import { MEMBER_NAV, STUDENT_NAV, type NavItem } from "@/components/layout/RoleNav";
 import { useSessionUser } from "@/application/hooks/useSessionUser";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
 
@@ -44,11 +36,24 @@ export default function AuthedLayout({ children }: { children: React.ReactNode }
   const pathname = usePathname() ?? "";
   const title = TITLE_MAP.find((m) => m.test.test(pathname))?.title ?? "TCCR";
   const user = useSessionUser();
-  // Profile and notifications are personal account pages — always show MEMBER_NAV.
-  // They are not role-specific surfaces; the content is identical regardless of role.
+  const activeRole = useAppSelector((s) => s.session.activeRole);
+
+  // Default: Member shell for all (authed) routes.
   let navItems: NavItem[] = MEMBER_NAV;
   let roleLabel = "Member";
   let dashboardHref = "/home";
+
+  // Profile and Notifications are shared surfaces. For Member+Student dual-role
+  // users they should *follow the active section*: if the user came from the
+  // Student sidebar (activeRole === "student"), keep them in the Student shell
+  // — otherwise stay in Member. Pure Members are always activeRole === "member"
+  // and therefore unaffected.
+  const isSharedSurface = /^\/(profile|notifications)/.test(pathname);
+  if (isSharedSurface && activeRole === "student") {
+    navItems = STUDENT_NAV;
+    roleLabel = "Student";
+    dashboardHref = "/dashboard";
+  }
 
   return (
     <AuthGuard allowedRoles={["member", "student", "leader", "g12", "admin", "super_admin"]}>

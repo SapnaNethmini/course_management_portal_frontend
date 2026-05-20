@@ -90,7 +90,6 @@ export function AppShell({
 
   const onLogout = async () => {
     await performSignOut("/login");
-    dispatch(pushToast({ tone: "success", title: "Signed out" }));
   };
 
   // 30-minute inactivity timeout (FR-A-008 / NFR-SEC-002). Only armed when a

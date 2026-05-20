@@ -7,11 +7,12 @@ import { AuthGuard } from "@/components/auth/AuthGuard";
 import { ADMIN_NAV, isLink } from "@/components/layout/RoleNav";
 import { useSessionUser } from "@/application/hooks/useSessionUser";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
+import { useSidebarCounts } from "@/application/hooks/useSidebarCounts";
 
 const TITLE_MAP: Array<{ test: RegExp; title: string }> = [
   { test: /^\/admin\/dashboard/, title: "Admin Dashboard" },
   { test: /^\/admin\/registrations/, title: "Role Requests" },
-  { test: /^\/admin\/enrollments/, title: "Enrolments" },
+  { test: /^\/admin\/enrollments/, title: "Enrollments" },
   { test: /^\/admin\/courses\/new/, title: "New course" },
   { test: /^\/admin\/courses\/[^/]+\/publish/, title: "Publish course" },
   { test: /^\/admin\/courses\/[^/]+\/view/, title: "Course details" },
@@ -28,6 +29,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname() ?? "";
   const title = TITLE_MAP.find((m) => m.test.test(pathname))?.title ?? "Admin";
   const user = useSessionUser();
+  useSidebarCounts();
   const pendingRegistrations = useAppSelector((s) => s.ui.pendingRegistrations);
   const pendingEnrollments = useAppSelector((s) => s.ui.pendingEnrollments);
 

@@ -9,8 +9,6 @@ import { RoleBadgeStack } from "@/components/user/RoleBadgeStack";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { useProfile } from "@/application/hooks/useProfile";
 import { useRoles } from "@/application/hooks/useRoles";
-import { GoogleIcon } from "@/components/ui/GoogleIcon";
-import { AppleIcon } from "@/components/auth/AppleIcon";
 
 function formatJoined(iso: string | undefined): string {
   if (!iso) return "";
@@ -19,11 +17,6 @@ function formatJoined(iso: string | undefined): string {
   return d.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 }
 
-const PROVIDER_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
-  "password":   { label: "Email & Password", icon: <Icon name="mail" size={16} /> },
-  "google.com": { label: "Google",           icon: <GoogleIcon size={16} /> },
-  "apple.com":  { label: "Apple",            icon: <AppleIcon size={16} /> },
-};
 
 export default function ProfilePage() {
   const P = useProfile();
@@ -62,7 +55,6 @@ export default function ProfilePage() {
   }
 
   const fullName = `${P.user.firstName} ${P.user.lastName}`.trim();
-  const providers = P.user.providers ?? ["password"];
 
   const onSave = async () => {
     const changes: Parameters<typeof P.updateProfile>[0] = {};
@@ -183,50 +175,6 @@ export default function ProfilePage() {
               await P.updateProfile({ preferredLanguage: map[code] });
             }}
           />
-        </div>
-      </div>
-
-      {/* ── Linked accounts ───────────────────────────────────────── */}
-      <div className="settings-card">
-        <h2>Linked accounts</h2>
-        <p className="settings-sub">Sign in faster by linking your Google or Apple account.</p>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {(["google", "apple"] as const).map((p) => {
-            const providerKey = p === "google" ? "google.com" : "apple.com";
-            const linked = providers.includes(providerKey);
-            const info = PROVIDER_LABELS[providerKey];
-            const isLastMethod = providers.length === 1 && linked;
-            return (
-              <div key={p} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid var(--color-stroke)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  {info.icon}
-                  <span style={{ fontFamily: "var(--font-body)", fontWeight: 500, fontSize: 14, color: "var(--color-primary)" }}>
-                    {info.label}
-                  </span>
-                  {linked && (
-                    <span style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--color-success)", fontWeight: 600 }}>
-                      ✓ Linked
-                    </span>
-                  )}
-                </div>
-                {linked ? (
-                  <button
-                    type="button"
-                    disabled={isLastMethod || P.linkingProvider !== null}
-                    title={isLastMethod ? "Add another sign-in method before unlinking" : "Unlink"}
-                    onClick={() => P.unlinkProvider(p)}
-                    style={{ background: "none", border: "none", cursor: isLastMethod ? "not-allowed" : "pointer", fontFamily: "var(--font-body)", fontSize: 13, color: isLastMethod ? "var(--color-muted)" : "var(--color-error)", padding: 0 }}
-                  >
-                    Unlink
-                  </button>
-                ) : (
-                  <Button size="sm" variant="secondary" disabled={P.linkingProvider !== null} onClick={() => P.linkProvider(p)}>
-                    {P.linkingProvider === p ? "Linking…" : "Link"}
-                  </Button>
-                )}
-              </div>
-            );
-          })}
         </div>
       </div>
 

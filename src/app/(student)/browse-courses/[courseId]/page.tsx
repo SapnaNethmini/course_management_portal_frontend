@@ -50,6 +50,7 @@ export default function BrowseCourseDetailPage() {
 
   const { course, loading, error } = useCourse(sessionUser ? params.courseId : undefined);
   const { batches: realBatches } = useBatches(sessionUser ? params.courseId : undefined);
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [lessonsBySubject, setLessonsBySubject] = useState<Record<string, LessonTitle[]>>({});
 
   useEffect(() => {
@@ -77,6 +78,14 @@ export default function BrowseCourseDetailPage() {
     return () => { cancelled = true; };
   }, [course?.semesters]);
 
+  // Auto-select first open batch when batches load (before any early returns).
+  useEffect(() => {
+    if (realBatches.length > 0 && !selectedBatchId) {
+      const firstOpen = realBatches.find((b) => b.state === "open");
+      if (firstOpen) setSelectedBatchId(firstOpen.id);
+    }
+  }, [realBatches, selectedBatchId]);
+
   if (loading) {
     return (
       <div style={{ textAlign: "center", padding: "48px 0", color: "var(--color-body-green)" }}>
@@ -91,13 +100,10 @@ export default function BrowseCourseDetailPage() {
   const status = getStatus(course.id);
   const existingEnrollment = getEnrollmentForCourse(course.id);
 
-  // Sort semesters by order for the sidebar tree.
   const sortedSemesters = (course.semesters ?? [])
     .slice()
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-  // Use real semester dates from API (openDate/endDate); no mock fallback.
-  // Semester state derived from real dates: past if endDate < today, future if openDate > today.
   const semesterMeta = sortedSemesters.map((sem) => {
     const now = new Date();
     const start = sem.openDate ? new Date(sem.openDate) : null;
@@ -108,8 +114,7 @@ export default function BrowseCourseDetailPage() {
     return { start: null, end: null, state: null };
   });
 
-  // All batches from real API — open batch selected for enrolment by default.
-  const openBatch = realBatches.find((b) => b.state === "open") ?? null;
+  const selectedBatch = realBatches.find((b) => b.id === selectedBatchId) ?? null;
 
   // Count lessons — fall back to 3 per subject when API hasn't loaded yet.
   const totalLessons = sortedSemesters.reduce((sum, sem) => {
@@ -122,7 +127,7 @@ export default function BrowseCourseDetailPage() {
   const handleRequest = async () => {
     setEnrolling(true);
     // V2: POST /enrollments requires { courseId, batchId }
-    await enroll(course.id, openBatch?.id);
+    await enroll(course.id, selectedBatch?.id);
     setEnrolling(false);
   };
 
@@ -134,7 +139,7 @@ export default function BrowseCourseDetailPage() {
           <h2>{course.title}</h2>
 
           {/* Intake badge */}
-          {openBatch && (
+          {selectedBatch && (
             <div
               style={{
                 display: "inline-flex",
@@ -152,7 +157,7 @@ export default function BrowseCourseDetailPage() {
               }}
             >
               <Icon name="calendar-clock" size={13} />
-              {openBatch.name} · {fmtDate(openBatch.intakeStart)} → {fmtDate(openBatch.intakeEnd)}
+              {selectedBatch.name} · {fmtDate(selectedBatch.intakeStart)} → {fmtDate(selectedBatch.intakeEnd)}
             </div>
           )}
 
@@ -331,15 +336,18 @@ export default function BrowseCourseDetailPage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
                   {realBatches.map((b) => {
                     const isOpen = b.state === "open";
-                    const isSelected = openBatch?.id === b.id;
+                    const isSelected = selectedBatchId === b.id;
                     return (
                       <div
                         key={b.id}
                         className="batch-row"
+                        onClick={() => isOpen && setSelectedBatchId(b.id)}
                         style={{
                           opacity: isOpen ? 1 : 0.4,
-                          cursor: isOpen ? "default" : "not-allowed",
-                          border: isSelected ? "1.5px solid var(--color-accent)" : undefined,
+                          cursor: isOpen ? "pointer" : "not-allowed",
+                          border: isSelected ? "2px solid var(--color-accent)" : "1px solid var(--color-stroke)",
+                          background: isSelected ? "rgba(188,233,85,0.08)" : undefined,
+                          transition: "border 150ms, background 150ms",
                         }}
                       >
                         <div className="ico"><Icon name="calendar-clock" size={18} /></div>
@@ -358,8 +366,9 @@ export default function BrowseCourseDetailPage() {
                   })}
                 </div>
               )}
-              <Button size="lg" icon="clipboard-list" onClick={handleRequest} disabled={enrolling}>
-                {enrolling ? "Requesting…" : "Request Enrolment"}
+              <Button size="lg" icon="clipboard-list" onClick={handleRequest}
+                disabled={enrolling || !selectedBatch || selectedBatch.state !== "open"}>
+                {enrolling ? "Requesting…" : selectedBatch ? "Request Enrolment" : "Select an intake above"}
               </Button>
             </>
           )}

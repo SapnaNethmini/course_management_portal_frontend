@@ -133,7 +133,7 @@ export default function PublicCourseDetailPage() {
               boxShadow: "0 20px 25px -5px rgba(0,0,0,0.3)",
             }}
           >
-            <CourseCover title={course.title} alt={course.title} />
+            <CourseCover imageUrl={course.coverImageUrl} title={course.title} alt={course.title} />
           </div>
         </div>
       </section>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter, usePathname } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -43,12 +43,18 @@ export default function EditCoursePage() {
   const [courseState, setCourseState] = useState<string | null>(null);
   const effectiveState = courseState ?? course?.state ?? "draft";
 
+  // Course cover image
+  const coverImageRef = useRef<HTMLInputElement>(null);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
+
   // Pre-fill form when course loads.
   useEffect(() => {
     if (course) {
       setTitle(course.title);
       setDirty(false);
-      setCourseState(course.state); // seed local state from API
+      setCourseState(course.state);
+      setCoverImageUrl(course.coverImageUrl ?? null);
     }
   }, [course]);
 
@@ -160,6 +166,33 @@ export default function EditCoursePage() {
     }
   };
 
+  const handleCoverImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !course) return;
+    if (!file.type.match(/^image\/(jpeg|png|webp)$/)) {
+      dispatch(pushToast({ tone: "warning", title: "Invalid file", message: "Use JPG, PNG or WebP." }));
+      return;
+    }
+    setUploadingCover(true);
+    try {
+      // Preview immediately
+      const previewUrl = URL.createObjectURL(file);
+      setCoverImageUrl(previewUrl);
+      // Save URL to course via PATCH
+      const updated = await apiRequest<CourseSummary>(`/courses/${course.id}`, {
+        method: "PATCH",
+        body: { coverImageUrl: previewUrl },
+      });
+      setCoverImageUrl(updated.coverImageUrl ?? previewUrl);
+      dispatch(pushToast({ tone: "success", title: "Cover image updated" }));
+    } catch {
+      dispatch(pushToast({ tone: "warning", title: "Couldn't update cover image" }));
+    } finally {
+      setUploadingCover(false);
+      if (coverImageRef.current) coverImageRef.current.value = "";
+    }
+  };
+
   return (
     <div className="page">
       <div className="page-header">
@@ -243,6 +276,60 @@ export default function EditCoursePage() {
             <SavedBadge visible={titleSaved} />
           </div>
         </form>
+      </div>
+
+      {/* Cover image card */}
+      <div className="settings-card">
+        <h2>Cover image</h2>
+        <p className="settings-sub">Shown on the course card in the catalogue. JPG, PNG or WebP.</p>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+          <div style={{
+            width: 160, height: 100, borderRadius: 10, overflow: "hidden", flexShrink: 0,
+            background: "var(--color-light-gray)", border: "1px solid var(--color-stroke)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {coverImageUrl
+              ? <img src={coverImageUrl} alt="Course cover" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              : <Icon name="image" size={28} style={{ opacity: 0.3 }} />}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <input
+              ref={coverImageRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              style={{ display: "none" }}
+              onChange={handleCoverImageChange}
+            />
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="upload"
+              disabled={uploadingCover}
+              onClick={() => coverImageRef.current?.click()}
+            >
+              {uploadingCover ? "Uploading…" : coverImageUrl ? "Change image" : "Upload image"}
+            </Button>
+            {coverImageUrl && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="x"
+                disabled={uploadingCover}
+                onClick={async () => {
+                  try {
+                    await apiRequest(`/courses/${course.id}`, { method: "PATCH", body: { coverImageUrl: null } });
+                    setCoverImageUrl(null);
+                    dispatch(pushToast({ tone: "success", title: "Cover image removed" }));
+                  } catch {
+                    dispatch(pushToast({ tone: "warning", title: "Couldn't remove cover image" }));
+                  }
+                }}
+              >
+                Remove
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* V2: Batches / Intakes — UI only, mock data */}

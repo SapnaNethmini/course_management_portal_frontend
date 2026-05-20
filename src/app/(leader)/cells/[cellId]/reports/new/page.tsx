@@ -1,57 +1,81 @@
 "use client";
 
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo } from "react";
 import { Button } from "@/components/ui/Button";
+import { Icon } from "@/components/ui/Icon";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CellReportForm, type CellReportPayload } from "@/components/cells/CellReportForm";
 import { useAppDispatch } from "@/application/hooks/useAppDispatch";
-import { useAppSelector } from "@/application/hooks/useAppSelector";
 import { pushToast } from "@/application/slices/uiSlice";
-import { getCellById } from "@/lib/mock/cells";
-import { createCellReport } from "@/lib/mock/cellReports";
+import { useCell } from "@/application/hooks/useCell";
+import { fileCellReport, uploadReportPhotos } from "@/application/hooks/useCellReports";
+import { useIdempotencyKey } from "@/application/hooks/useIdempotencyKey";
 
 export default function NewCellReportPage() {
   const router = useRouter();
   const params = useParams();
   const dispatch = useAppDispatch();
-  const user = useAppSelector((s) => s.session.user);
   const cellId = (params?.cellId as string) ?? "";
-  const cell = useMemo(() => getCellById(cellId), [cellId]);
 
-  if (!cell) {
-    return (
-      <div className="page">
-        <EmptyState icon="alert-circle" title="Cell not found" message="The cell you tried to report on doesn't exist." />
-      </div>
-    );
-  }
+  const { cell, loading } = useCell(cellId || undefined);
+  const { getKey, resetKey } = useIdempotencyKey();
+  const [submitting, setSubmitting] = useState(false);
 
-  const submit = (payload: CellReportPayload) => {
-    const filer = user ? `${user.firstName} ${user.lastName}`.trim() : "Unknown";
-    const created = createCellReport({
-      cellId: cell.id,
-      cellName: cell.name,
-      meetingDate: payload.meetingDate,
-      language: payload.language,
-      didMeet: payload.didMeet,
-      notMetReason: payload.notMetReason,
-      location: payload.location,
-      startTime: payload.startTime,
-      endTime: payload.endTime,
-      leaderPresent: payload.leaderPresent,
-      subjectKind: payload.subjectKind,
-      subjectTopic: payload.subjectTopic,
-      cellType: payload.cellType,
-      attendance: payload.attendance,
-      visitorCount: payload.visitorCount,
-      followUpNotes: payload.followUpNotes,
-      satisfaction: payload.satisfaction,
-      filedBy: filer,
-    });
+  if (loading) return <div className="page" style={{ textAlign: "center", padding: 48 }}><Icon name="loader" size={24} style={{ color: "var(--color-muted)" }} /></div>;
+  if (!cell) return <div className="page"><EmptyState icon="alert-circle" title="Cell not found" message="The cell you tried to report on doesn't exist." /></div>;
 
-    dispatch(pushToast({ tone: "success", title: "Report submitted", message: "Your G12 leader will see this." }));
-    router.push(`/cells/${cell.id}/reports/${created.id}`);
+  const submit = async (payload: CellReportPayload) => {
+    setSubmitting(true);
+    try {
+      // Step 1: upload photos if any (returns URLs).
+      let photoUrls: string[] = [];
+      if (payload.photos?.length) {
+        photoUrls = await uploadReportPhotos(cell.id, payload.photos);
+      }
+
+      // Step 2: file the report with X-Idempotency-Key.
+      const created = await fileCellReport(
+        cell.id,
+        {
+          date:                 payload.meetingDate,
+          didMeet:              payload.didMeet,
+          noMeetReason:         payload.notMetReason ?? null,
+          leaderPresent:        payload.leaderPresent,
+          location:             payload.location,
+          timeStarted:          payload.startTime,
+          timeEnded:            payload.endTime,
+          language:             payload.language as "si" | "ta" | "en",
+          subjectDiscussed:     payload.subjectKind === "sunday_sermon" ? "sunday_sermon" : "other",
+          otherSubjectReason:   payload.subjectTopic ?? null,
+          cellType:             payload.cellType,
+          g12LeaderUid:         cell.g12LeaderUid,
+          attendance:           (payload.attendance ?? []).map((a) => {
+            const entry = a as unknown as Record<string, unknown>;
+            return {
+              userUid: (entry.userUid ?? entry.memberId) as string | undefined,
+              name:    ((entry.name ?? entry.memberName) as string) ?? "",
+              status:  a.status as "present" | "absent" | "new",
+              isNew:   (entry.isNew as boolean) ?? false,
+            };
+          }),
+          additionalVisitors:   payload.visitorCount ?? 0,
+          childrenCount:        0,
+          satisfactionRate:     payload.satisfaction ?? 3,
+          additionalInfo:       payload.followUpNotes ?? null,
+          photoUrls,
+        },
+        getKey(),
+      );
+
+      resetKey();
+      dispatch(pushToast({ tone: "success", title: "Report submitted", message: "Your G12 leader will see this." }));
+      router.push(`/cells/${cell.id}/reports/${created.id}`);
+    } catch (err) {
+      dispatch(pushToast({ tone: "warning", title: "Failed to submit report", message: (err as Error).message }));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -69,7 +93,11 @@ export default function NewCellReportPage() {
         </p>
       </header>
 
-      <CellReportForm cell={cell} onSubmit={submit} onCancel={() => router.push(`/cells/${cell.id}`)} />
+      <CellReportForm
+        cell={{ id: cell.id, name: cell.name, type: cell.type, area: cell.area, leaderId: cell.leaderUid, leaderName: cell.leaderName ?? "", leaderAvatar: "", g12LeaderName: cell.g12LeaderName, members: (cell.members ?? []).map((m) => ({ id: m.uid ?? String(m), name: m.displayName ?? String(m), avatar: "", joinedAt: cell.createdAt })), state: cell.state, reportCount: cell.reportCount } as unknown as Parameters<typeof CellReportForm>[0]["cell"]}
+        onSubmit={submit}
+        onCancel={() => router.push(`/cells/${cell.id}`)}
+      />
     </div>
   );
 }

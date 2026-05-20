@@ -16,6 +16,7 @@ import type { CourseProgress } from "@/application/hooks/useProgress";
 interface ApprovedCourse {
   courseId: string;
   courseTitle: string;
+  coverImageUrl?: string | null;
   progress: CourseProgress | null;
   enrollmentApprovedAt: string | null;
 }
@@ -53,13 +54,15 @@ export default function StudentDashboardPage() {
           apiRequest<ApiCourseSummary>(`/courses/${enr.courseId}`),
           apiRequest<CourseProgress>(`/me/progress/courses/${enr.courseId}`),
         ]);
-        const courseTitle =
-          courseResult.status === "fulfilled" ? courseResult.value.title : enr.courseId;
+        const courseData = courseResult.status === "fulfilled" ? courseResult.value : null;
+        const courseTitle = courseData?.title ?? enr.courseId;
+        const coverImageUrl = courseData?.coverImageUrl ?? null;
         const progress =
           progressResult.status === "fulfilled" ? progressResult.value : null;
         return {
           courseId: enr.courseId,
           courseTitle,
+          coverImageUrl,
           progress,
           enrollmentApprovedAt: enr.approvedAt ?? null,
         } as ApprovedCourse;
@@ -218,6 +221,7 @@ export default function StudentDashboardPage() {
             <CourseCard
               key={c.courseId}
               title={c.courseTitle}
+              coverImageUrl={c.coverImageUrl}
               progress={c.progress?.completionPercent ?? 0}
               completedCount={c.progress?.completedCount ?? 0}
               totalSubjects={c.progress?.totalSubjects ?? 0}
@@ -251,7 +255,7 @@ export default function StudentDashboardPage() {
               className="course-card my-card"
               onClick={() => router.push(`/my-courses/${c.courseId}`)}
             >
-              <CourseCover title={c.courseTitle} />
+              <CourseCover imageUrl={c.coverImageUrl} title={c.courseTitle} />
               <div className="body">
                 <h3>{c.courseTitle}</h3>
                 <Button
@@ -288,7 +292,7 @@ export default function StudentDashboardPage() {
               className="course-card my-card"
               onClick={() => router.push(`/my-courses/${c.courseId}`)}
             >
-              <CourseCover title={c.courseTitle} tag="100% complete" />
+              <CourseCover imageUrl={c.coverImageUrl} title={c.courseTitle} tag="100% complete" />
               <div className="body">
                 <h3>{c.courseTitle}</h3>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#4ade80", fontFamily: "var(--font-body)", fontSize: 13, fontWeight: 600 }}>
@@ -325,12 +329,14 @@ function EmptyRow({ label, icon }: { label: string; icon: string }) {
 
 function CourseCard({
   title,
+  coverImageUrl,
   progress,
   completedCount,
   totalSubjects,
   onClick,
 }: {
   title: string;
+  coverImageUrl?: string | null;
   progress: number;
   completedCount: number;
   totalSubjects: number;
@@ -338,7 +344,7 @@ function CourseCard({
 }) {
   return (
     <article className="course-card my-card" onClick={onClick}>
-      <CourseCover title={title} />
+      <CourseCover imageUrl={coverImageUrl} title={title} />
       <div className="body">
         <h3>{title}</h3>
         <div style={{ fontSize: 12, color: "var(--color-muted)", fontFamily: "var(--font-body)" }}>

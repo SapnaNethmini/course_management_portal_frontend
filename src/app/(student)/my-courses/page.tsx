@@ -104,7 +104,7 @@ export default function MyCoursesPage() {
         }}
       >
         <div style={{ position: "relative" }}>
-          <CourseCover title={title} alt={title} />
+          <CourseCover imageUrl={course?.coverImageUrl} title={title} alt={title} />
           {e.state !== "approved" && (
             <div style={{
               position: "absolute", inset: 0,
@@ -234,7 +234,7 @@ export default function MyCoursesPage() {
                   style={{ cursor: "pointer" }}
                   onClick={() => router.push(`/my-courses/${e.courseId}`)}
                 >
-                  <CourseCover title={title} tag="100% complete" />
+                  <CourseCover imageUrl={course?.coverImageUrl} title={title} tag="100% complete" />
                   <div className="body">
                     <h3>{title}</h3>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#4ade80", fontFamily: "var(--font-body)", fontSize: 13, fontWeight: 600 }}>

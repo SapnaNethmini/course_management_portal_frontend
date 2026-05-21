@@ -50,6 +50,47 @@ export default function G12PromotePage() {
   const [promoting, setPromoting] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ uid: string; name: string; role: "leader" | "g12" } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+
+  // V2 POST /auth/register — public endpoint that creates a new account
+  // with the requested role + emails credentials/reset link to the user.
+  const handleAddNewMember = async (payload: AddNewMemberPayload) => {
+    setAddBusy(true);
+    try {
+      await apiRequest("/auth/register", {
+        method: "POST",
+        auth: false,
+        body: {
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          email: payload.email,
+          password: payload.password,
+          role: payload.role,
+          preferredLanguage: "en",
+        },
+      });
+      dispatch(pushToast({
+        tone: "success",
+        title: "Member created",
+        message: `Invite emailed to ${payload.email}.`,
+      }));
+      setAddOpen(false);
+      // The created user already holds the assigned Leader/G12 role so they
+      // won't appear on this Members-only list; no refresh needed.
+    } catch (err) {
+      let title = "Couldn't create member";
+      let message: string | undefined;
+      if (err instanceof ApiRequestError) {
+        if (err.status === 409) { title = "Email already registered"; message = err.message; }
+        else if (err.status === 403) { title = "Not permitted"; message = err.message; }
+        else if (err.status === 400) { title = "Validation error"; message = err.message; }
+        else if (err.message) message = err.message;
+      }
+      dispatch(pushToast({ tone: "warning", title, message }));
+    } finally {
+      setAddBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!sessionUser) return;
@@ -326,20 +367,10 @@ export default function G12PromotePage() {
 
       <AddNewMemberDialog
         open={addOpen}
+        busy={addBusy}
         allowedRoles={["leader", "g12"]}
         onCancel={() => setAddOpen(false)}
-        onSubmit={(payload: AddNewMemberPayload) => {
-          // Backend wiring pending — keep the payload available for the future
-          // POST /<TBD endpoint> integration.
-          // eslint-disable-next-line no-console
-          console.log("[AddNewMember] payload (will POST to backend once API ships):", payload);
-          dispatch(pushToast({
-            tone: "success",
-            title: "Invite queued (UI only)",
-            message: `${payload.firstName} ${payload.lastName} as ${payload.role.toUpperCase()} — backend integration pending.`,
-          }));
-          setAddOpen(false);
-        }}
+        onSubmit={handleAddNewMember}
       />
     </div>
   );

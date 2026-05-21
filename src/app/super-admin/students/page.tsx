@@ -65,6 +65,9 @@ export default function SuperAdminStudentsPage() {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 25;
   const [addOpen, setAddOpen] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+  // Increment to retrigger the users-list effect after a create.
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Super admins can assign any of leader/g12/admin. Plain admins shouldn't
   // assign admin per the V2 spec, but this page is shared — gate by route.
@@ -112,7 +115,7 @@ export default function SuperAdminStudentsPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [sessionUser, dispatch]);
+  }, [sessionUser, dispatch, refreshKey]);
 
   // 2. Fetch ALL admin enrollments once, then count per student client-side.
   //    (Backend's studentUid filter is unreliable — returns the same count for
@@ -464,18 +467,44 @@ export default function SuperAdminStudentsPage() {
 
       <AddNewMemberDialog
         open={addOpen}
+        busy={addBusy}
         allowedRoles={allowedNewRoles}
         onCancel={() => setAddOpen(false)}
-        onSubmit={(payload: AddNewMemberPayload) => {
-          // Backend wiring pending — payload kept for the future POST integration.
-          // eslint-disable-next-line no-console
-          console.log("[AddNewMember] payload (will POST to backend once API ships):", payload);
-          dispatch(pushToast({
-            tone: "success",
-            title: "Invite queued (UI only)",
-            message: `${payload.firstName} ${payload.lastName} as ${payload.role.toUpperCase()} — backend integration pending.`,
-          }));
-          setAddOpen(false);
+        onSubmit={async (payload: AddNewMemberPayload) => {
+          setAddBusy(true);
+          try {
+            await apiRequest("/auth/register", {
+              method: "POST",
+              auth: false,
+              body: {
+                firstName: payload.firstName,
+                lastName: payload.lastName,
+                email: payload.email,
+                password: payload.password,
+                role: payload.role,
+                preferredLanguage: "en",
+              },
+            });
+            dispatch(pushToast({
+              tone: "success",
+              title: "Member created",
+              message: `Invite emailed to ${payload.email}.`,
+            }));
+            setAddOpen(false);
+            setRefreshKey((k) => k + 1);
+          } catch (err) {
+            let title = "Couldn't create member";
+            let message: string | undefined;
+            if (err instanceof ApiRequestError) {
+              if (err.status === 409) { title = "Email already registered"; message = err.message; }
+              else if (err.status === 403) { title = "Not permitted"; message = err.message; }
+              else if (err.status === 400) { title = "Validation error"; message = err.message; }
+              else if (err.message) message = err.message;
+            }
+            dispatch(pushToast({ tone: "warning", title, message }));
+          } finally {
+            setAddBusy(false);
+          }
         }}
       />
     </div>

@@ -24,9 +24,10 @@ export default function LeaderCellsPage() {
   const [search, setSearch]         = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | CellType>("all");
 
-  // Mirror what G12 does — no scope param. Backend then returns the wider
-  // cells set the caller can see (G12 confirmed returns 10+ cells with no
-  // params, so leaders should get the same wider view).
+  // Backend scopes /cells by role: G12 callers see their network's cells,
+  // Leader callers see only the cells they personally lead. The "Other
+  // available cells" section therefore stays empty for plain Leaders until
+  // backend widens the scope.
   const { cells: rawCells, loading } = useCells();
 
   // Client-side filter to active only — preserves the previous UX where

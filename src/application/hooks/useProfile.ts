@@ -19,7 +19,7 @@ const API_PREFIX = process.env.NEXT_PUBLIC_API_PREFIX ?? "/api/v1";
 interface ProfileUpdate {
   firstName?: string;
   lastName?: string;
-  phone?: string;
+  phoneNumber?: string | null;
   preferredLanguage?: "si" | "ta" | "en";
   profilePhotoUrl?: string | null;
 }
@@ -53,7 +53,11 @@ export function useProfile() {
           method: "PATCH",
           body: changes,
         });
-        dispatch(setUser(updated));
+        // Backend's PATCH response sometimes strips fields it accepts but
+        // doesn't echo (e.g. `phone`). Merge the request body back so the UI
+        // reflects what the user just submitted. Once backend echoes every
+        // accepted field, this becomes a no-op.
+        dispatch(setUser({ ...updated, ...changes } as SessionUser));
         // Keep locale slice in sync when preferred language changes.
         if (changes.preferredLanguage) {
           dispatch(setLocale(changes.preferredLanguage));

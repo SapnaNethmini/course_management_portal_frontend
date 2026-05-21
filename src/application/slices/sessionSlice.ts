@@ -50,7 +50,7 @@ export interface SessionUser {
   status: UserStatus;
   firstName: string;
   lastName: string;
-  phone?: string;
+  phoneNumber?: string | null;
   profilePhotoUrl: string | null;
   createdAt?: string;
   updatedAt?: string;

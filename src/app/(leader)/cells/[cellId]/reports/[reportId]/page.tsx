@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ReportViewer } from "@/components/cells/ReportViewer";
 import { VoidReportDialog } from "@/components/cells/VoidReportDialog";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
+import { useCell } from "@/application/hooks/useCell";
 import { useCellReport, useVoidReport } from "@/application/hooks/useCellReports";
 
 export default function CellReportViewPage() {
@@ -18,6 +19,7 @@ export default function CellReportViewPage() {
   const reportId = (params?.reportId as string) ?? "";
 
   const { report, loading } = useCellReport(cellId || undefined, reportId || undefined);
+  const { cell } = useCell(cellId || undefined);
   const { voidReport, busy: voidBusy } = useVoidReport();
   const [voidOpen, setVoidOpen] = useState(false);
 
@@ -55,7 +57,7 @@ export default function CellReportViewPage() {
         )}
       </div>
 
-      <ReportViewer report={report as unknown as Parameters<typeof ReportViewer>[0]["report"]} />
+      <ReportViewer report={report} cellName={cell?.name} />
 
       {voidOpen && (
         <VoidReportDialog

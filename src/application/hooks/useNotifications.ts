@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAppDispatch } from "./useAppDispatch";
 import { useAppSelector } from "./useAppSelector";
 import { pushToast } from "@/application/slices/uiSlice";
-import { apiRequest, ApiRequestError } from "@/infrastructure/api/request";
+import { apiRequest } from "@/infrastructure/api/request";
 import { auth } from "@/infrastructure/firebase/auth";
 
 /* ── Types ───────────────────────────────────────────────────────────── */
@@ -69,10 +69,8 @@ export function useNotifications({ pollUnread = false }: UseNotificationsOptions
       const deduped = Array.from(seen.values());
       setItems(deduped);
       setUnreadCount(deduped.filter((n) => !n.read).length);
-    } catch (err) {
-      if (err instanceof ApiRequestError && err.status !== 401) {
-        dispatch(pushToast({ tone: "warning", title: "Failed to load notifications" }));
-      }
+    } catch {
+      // Silent — notification failures shouldn't interrupt the UX.
     } finally {
       setLoading(false);
     }

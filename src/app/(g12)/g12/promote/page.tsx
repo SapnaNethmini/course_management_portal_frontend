@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { AddNewMemberDialog, type AddNewMemberPayload } from "@/components/admin/AddNewMemberDialog";
 import { RoleBadgeStack } from "@/components/user/RoleBadgeStack";
 import { useAppDispatch } from "@/application/hooks/useAppDispatch";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
@@ -48,6 +49,7 @@ export default function G12PromotePage() {
   const [page, setPage] = useState(0);
   const [promoting, setPromoting] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ uid: string; name: string; role: "leader" | "g12" } | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   useEffect(() => {
     if (!sessionUser) return;
@@ -145,6 +147,9 @@ export default function G12PromotePage() {
             Promote a Member to Leader or G12 here — roles are additive, so members keep their existing access.
           </div>
         </div>
+        <Button icon="user-plus" onClick={() => setAddOpen(true)}>
+          Add a new member
+        </Button>
       </div>
 
       <div className="role-banner">
@@ -317,6 +322,24 @@ export default function G12PromotePage() {
         confirmLabel={confirm?.role === "g12" ? "Yes, promote to G12" : "Yes, promote to Leader"}
         onConfirm={() => { if (confirm) runPromote(confirm.uid, confirm.role); }}
         onCancel={() => setConfirm(null)}
+      />
+
+      <AddNewMemberDialog
+        open={addOpen}
+        allowedRoles={["leader", "g12"]}
+        onCancel={() => setAddOpen(false)}
+        onSubmit={(payload: AddNewMemberPayload) => {
+          // Backend wiring pending — keep the payload available for the future
+          // POST /<TBD endpoint> integration.
+          // eslint-disable-next-line no-console
+          console.log("[AddNewMember] payload (will POST to backend once API ships):", payload);
+          dispatch(pushToast({
+            tone: "success",
+            title: "Invite queued (UI only)",
+            message: `${payload.firstName} ${payload.lastName} as ${payload.role.toUpperCase()} — backend integration pending.`,
+          }));
+          setAddOpen(false);
+        }}
       />
     </div>
   );

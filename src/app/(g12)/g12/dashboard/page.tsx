@@ -12,6 +12,7 @@ import {
   useAttendance,
   useMeetingTypes,
 } from "@/application/hooks/useAnalytics";
+import { useReportAggregates } from "@/application/hooks/useReportAggregates";
 
 const TYPE_COLORS: Record<string, string> = {
   care: "#1D4ED8",
@@ -25,10 +26,20 @@ function weekLabel(w: unknown): string {
   return w.length >= 3 ? w.slice(-3) : w;
 }
 
+const KNOWN_CELL_TYPES = new Set(["g12", "care", "children", "outreach"]);
+
 function toMeetingTypeArray(d: unknown): Array<{ type: string; count: number }> {
   if (Array.isArray(d)) return d as Array<{ type: string; count: number }>;
   if (d && typeof d === "object") {
-    return Object.entries(d as Record<string, unknown>).map(([type, count]) => ({
+    const obj = d as Record<string, unknown>;
+    // Backend envelope: { scope, period, breakdown: { care: N, ... } }
+    if (obj.breakdown && typeof obj.breakdown === "object") {
+      return toMeetingTypeArray(obj.breakdown);
+    }
+    // Raw object map { care: N, outreach: N } — only accept if keys look like cell types.
+    const entries = Object.entries(obj).filter(([k]) => KNOWN_CELL_TYPES.has(k));
+    if (entries.length === 0) return [];
+    return entries.map(([type, count]) => ({
       type,
       count: typeof count === "number" ? count : Number(count) || 0,
     }));
@@ -48,6 +59,8 @@ export default function G12DashboardPage() {
   const cellsWeekly = useCellsWeekly({ weeks: 8 });
   const attendance = useAttendance();
   const meetingTypes = useMeetingTypes();
+  // Fallback aggregates computed from real cell reports across the network.
+  const aggregates = useReportAggregates(cells, { weeks: 8 });
 
   const leadersInNetwork = useMemo(
     () => new Set((cells ?? []).map((c) => c.leaderUid).filter(Boolean)).size,
@@ -64,23 +77,26 @@ export default function G12DashboardPage() {
     return (Array.isArray(cellsWeekly.data) ? cellsWeekly.data : []).reduce((s, p) => s + (p?.reports ?? 0), 0);
   }, [cells, cellsWeekly.data]);
 
-  const weeklyBars = useMemo(
-    () =>
-      (Array.isArray(attendance.data) ? attendance.data : [])
-        .slice(-8)
-        .map((p) => ({ label: weekLabel(p?.week), value: p?.present ?? 0 })),
-    [attendance.data],
-  );
+  const weeklyBars = useMemo(() => {
+    const fromApi = Array.isArray(attendance.data) ? attendance.data : [];
+    const apiTotal = fromApi.reduce((s, x) => s + (x?.present ?? 0) + (x?.absent ?? 0), 0);
+    const source = apiTotal > 0 ? fromApi : aggregates.weekly;
+    return source.slice(-8).map((p) => ({ label: weekLabel(p?.week), value: p?.present ?? 0 }));
+  }, [attendance.data, aggregates.weekly]);
 
-  const typeSlices = useMemo(
-    () =>
-      toMeetingTypeArray(meetingTypes.data).map((s) => ({
-        label: s?.type ?? "unknown",
-        value: s?.count ?? 0,
-        color: TYPE_COLORS[s?.type ?? ""] ?? "#999",
-      })),
-    [meetingTypes.data],
-  );
+  const typeSlices = useMemo(() => {
+    const fromApi = toMeetingTypeArray(meetingTypes.data);
+    const apiTotal = fromApi.reduce((s, x) => s + (x.count ?? 0), 0);
+    // Fall back to real cell-report aggregates when API has no data OR when
+    // every slice is zero (common when backend ships the response shape but
+    // the aggregation hasn't been wired yet).
+    const source = apiTotal > 0 ? fromApi : aggregates.meetingTypes;
+    return source.map((s) => ({
+      label: s?.type ?? "unknown",
+      value: s?.count ?? 0,
+      color: TYPE_COLORS[s?.type ?? ""] ?? "#999",
+    }));
+  }, [meetingTypes.data, aggregates.meetingTypes]);
 
   return (
     <div className="page">
@@ -121,7 +137,7 @@ export default function G12DashboardPage() {
           title="Weekly attendance"
           sub="Past 8 weeks · all your network cells combined"
         >
-          {attendance.loading ? <EmptyChart message="Loading…" /> :
+          {(attendance.loading || aggregates.loading) && weeklyBars.length === 0 ? <EmptyChart message="Loading…" /> :
             weeklyBars.length === 0 ? <EmptyChart /> :
             <WeeklyAttendanceBars bars={weeklyBars} highlightIndex={weeklyBars.length - 1} />}
         </ChartCard>
@@ -131,7 +147,7 @@ export default function G12DashboardPage() {
           sub="Reports by cell type"
           legend={typeSlices.map((s) => ({ label: s.label, color: s.color }))}
         >
-          {meetingTypes.loading ? <EmptyChart message="Loading…" /> :
+          {(meetingTypes.loading || aggregates.loading) && typeSlices.length === 0 ? <EmptyChart message="Loading…" /> :
             typeSlices.length === 0 ? <EmptyChart /> :
             <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
               <MeetingTypeDonut slices={typeSlices} size={200} />

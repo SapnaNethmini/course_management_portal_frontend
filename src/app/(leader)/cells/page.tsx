@@ -24,13 +24,20 @@ export default function LeaderCellsPage() {
   const [search, setSearch]         = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | CellType>("all");
 
-  const { cells: rawCells, loading } = useCells({ state: "active" });
+  // Mirror what G12 does — no scope param. Backend then returns the wider
+  // cells set the caller can see (G12 confirmed returns 10+ cells with no
+  // params, so leaders should get the same wider view).
+  const { cells: rawCells, loading } = useCells();
 
-  const filtered = useMemo(() => rawCells.filter((c) => {
+  // Client-side filter to active only — preserves the previous UX where
+  // archived cells didn't show up in the leader's list.
+  const activeCells = rawCells.filter((c) => c.state !== "archived");
+
+  const filtered = useMemo(() => activeCells.filter((c) => {
     if (typeFilter !== "all" && c.type !== typeFilter) return false;
     if (search.trim() && !c.name.toLowerCase().includes(search.trim().toLowerCase())) return false;
     return true;
-  }), [rawCells, typeFilter, search]);
+  }), [activeCells, typeFilter, search]);
 
   // Cells the user leads — they have full access (edit, manage members, archive).
   const myCells    = filtered.filter((c) => c.leaderUid === user?.uid);
@@ -86,7 +93,7 @@ export default function LeaderCellsPage() {
             )}
           </section>
 
-          {/* ── Other available cells — read-only ── */}
+          {/* ── Other available cells — dimmed and NOT clickable for everyone ── */}
           {otherCells.length > 0 && (
             <section>
               <h2 style={{ margin: "0 0 4px", fontFamily: "var(--font-heading)", fontSize: 17, fontWeight: 600, color: "var(--color-primary)" }}>
@@ -94,9 +101,13 @@ export default function LeaderCellsPage() {
                 <span style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "var(--color-body-green)", fontWeight: 500, marginLeft: 8 }}>· view only</span>
               </h2>
               <p style={{ margin: "0 0 14px", fontFamily: "var(--font-body)", fontSize: 13, color: "var(--color-body-green)" }}>
-                You can see other cells but cannot edit or manage them.
+                You can see other cells but cannot open or manage them.
               </p>
-              <div className="cell-grid" style={{ opacity: 0.75 }}>
+              <div
+                className="cell-grid"
+                style={{ opacity: 0.65, filter: "saturate(0.7)", pointerEvents: "none", userSelect: "none" }}
+                aria-disabled="true"
+              >
                 {otherCells.map((c) => (
                   <CellCard key={c.id} cell={c} readonly />
                 ))}

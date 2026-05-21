@@ -111,18 +111,7 @@ export default function PublicHomePage() {
             </div>
           </div>
           <div className="hero-img">
-            <img src="/team-working.webp" alt={t("hero.imageAlt")} />
-            <div className="hero-badge">
-              <div>
-                <div className="num">{t("hero.badgeNum")}</div>
-                <div className="stars">{t("hero.badgeStars")}</div>
-              </div>
-              <div className="lab">
-                {t("hero.badgeLabel1")}
-                <br />
-                {t("hero.badgeLabel2")}
-              </div>
-            </div>
+            <img src="/tccr-logo.jpeg" alt={t("hero.imageAlt")} />
           </div>
         </div>
       </section>

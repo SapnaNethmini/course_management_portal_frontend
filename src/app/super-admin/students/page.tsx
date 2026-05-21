@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { AddNewMemberDialog, type AddNewMemberPayload, type AssignableRole } from "@/components/admin/AddNewMemberDialog";
 import { RoleBadgeStack } from "@/components/user/RoleBadgeStack";
 import { useAppDispatch } from "@/application/hooks/useAppDispatch";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
@@ -63,6 +64,14 @@ export default function SuperAdminStudentsPage() {
   const [confirm, setConfirm] = useState<{ uid: string; name: string; role: "leader" | "g12" } | null>(null);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 25;
+  const [addOpen, setAddOpen] = useState(false);
+
+  // Super admins can assign any of leader/g12/admin. Plain admins shouldn't
+  // assign admin per the V2 spec, but this page is shared — gate by route.
+  const isSuper = pathname?.startsWith("/super-admin") ?? false;
+  const allowedNewRoles: AssignableRole[] = isSuper
+    ? ["leader", "g12", "admin"]
+    : ["leader", "g12"];
   const [courseCountByStudent, setCourseCountByStudent] = useState<Record<string, {
     courseCount: number;
     loading: boolean;
@@ -250,9 +259,12 @@ export default function SuperAdminStudentsPage() {
             Promote a Member to Leader or G12 here — roles are additive, so members keep their existing access.
           </div>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Button variant="secondary" icon="download" onClick={handleExport} disabled={students.length === 0}>
             Export CSV
+          </Button>
+          <Button icon="user-plus" onClick={() => setAddOpen(true)}>
+            Add a new member
           </Button>
         </div>
       </div>
@@ -448,6 +460,23 @@ export default function SuperAdminStudentsPage() {
         confirmLabel={confirm?.role === "g12" ? "Yes, promote to G12" : "Yes, promote to Leader"}
         onConfirm={() => { if (confirm) runPromote(confirm.uid, confirm.role); }}
         onCancel={() => setConfirm(null)}
+      />
+
+      <AddNewMemberDialog
+        open={addOpen}
+        allowedRoles={allowedNewRoles}
+        onCancel={() => setAddOpen(false)}
+        onSubmit={(payload: AddNewMemberPayload) => {
+          // Backend wiring pending — payload kept for the future POST integration.
+          // eslint-disable-next-line no-console
+          console.log("[AddNewMember] payload (will POST to backend once API ships):", payload);
+          dispatch(pushToast({
+            tone: "success",
+            title: "Invite queued (UI only)",
+            message: `${payload.firstName} ${payload.lastName} as ${payload.role.toUpperCase()} — backend integration pending.`,
+          }));
+          setAddOpen(false);
+        }}
       />
     </div>
   );

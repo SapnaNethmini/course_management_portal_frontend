@@ -77,21 +77,37 @@ export default function CellMembersPage() {
     displayName: m.displayName ?? String(m),
   }));
 
-  // Debounced typeahead — fires on every keystroke once ≥2 chars typed.
+  // Same typeahead pattern as AddMemberDialog: debounced `?name=` query with
+  // case fan-out (lowercase + Title-Case) so users typing "sap" also find
+  // "Sapna" stored with capital S.
   useEffect(() => {
     const term = search.trim();
-    if (term.length < 2) { setResults([]); return; }
+    if (term.length < 2) { setResults([]); setSearching(false); return; }
     let cancelled = false;
     setSearching(true);
     const timer = setTimeout(async () => {
       try {
-        // V2 spec: GET /users?name=<prefix> — firstName prefix search.
-        const res = await apiRequest<unknown>(`/users?name=${encodeURIComponent(term)}&limit=20`);
+        const titleCase = term.charAt(0).toUpperCase() + term.slice(1).toLowerCase();
+        const variants = Array.from(new Set([term, titleCase]));
+        const responses = await Promise.all(
+          variants.map((v) =>
+            apiRequest<unknown>(`/users?${new URLSearchParams({ name: v, limit: "20" })}`)
+              .catch(() => null),
+          ),
+        );
         if (cancelled) return;
-        const list = unwrapUsers(res);
+        const seen = new Set<string>();
+        const merged: UserResult[] = [];
+        for (const res of responses) {
+          for (const u of unwrapUsers(res)) {
+            if (!u.uid || seen.has(u.uid)) continue;
+            seen.add(u.uid);
+            merged.push(u);
+          }
+        }
         const memberUids = new Set(members.map((m) => m.uid));
         setResults(
-          list.filter((u) => {
+          merged.filter((u) => {
             if (memberUids.has(u.uid)) return false;
             const roles = u.roles ?? [];
             return !roles.includes("admin") && !roles.includes("super_admin");
@@ -107,6 +123,8 @@ export default function CellMembersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
+  // Toggle user into the staged "selected" list. Chips appear below the
+  // search bar so the user can pick several before clicking "Add members".
   const toggleSelect = (u: UserResult) => {
     setSelected((prev) =>
       prev.some((s) => s.uid === u.uid)
@@ -115,13 +133,14 @@ export default function CellMembersPage() {
     );
   };
 
-  const handleAdd = async () => {
-    if (!selected.length) return;
+  // POST all staged UIDs in one call (same flow as the AddMemberDialog button).
+  const handleAddSelected = async () => {
+    if (selected.length === 0) return;
     const res = await addMembers(selected.map((u) => u.uid));
     if (res) {
       setSelected([]);
-      setResults([]);
       setSearch("");
+      setResults([]);
       refetch();
     }
   };
@@ -166,6 +185,28 @@ export default function CellMembersPage() {
               style={{ paddingLeft: 36, width: "100%" }}
             />
           </div>
+
+          {/* Selected chips — same UX as the AddMemberDialog. */}
+          {selected.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+              {selected.map((u) => {
+                const fullName = [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || u.email || u.uid;
+                return (
+                  <span key={u.uid} className="chip active" style={{ paddingRight: 4, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    {fullName}
+                    <button
+                      type="button"
+                      onClick={() => toggleSelect(u)}
+                      aria-label={`Remove ${fullName}`}
+                      style={{ background: "transparent", border: 0, cursor: "pointer", padding: 0, color: "inherit", display: "inline-flex" }}
+                    >
+                      <Icon name="x" size={12} />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
           {searching && (
             <div style={{ marginTop: 8, fontFamily: "var(--font-body)", fontSize: 12, color: "var(--color-muted)" }}>
               Searching…
@@ -181,27 +222,45 @@ export default function CellMembersPage() {
           {results.length > 0 && (
             <div style={{ marginTop: 12, border: "1px solid var(--color-stroke)", borderRadius: 10, overflow: "hidden" }}>
               {results.map((u) => {
-                const isSelected = selected.some((s) => s.uid === u.uid);
                 const fullName = [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || u.email || u.uid;
+                const isSelected = selected.some((s) => s.uid === u.uid);
                 return (
-                  <div key={u.uid} onClick={() => toggleSelect(u)}
-                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: isSelected ? "rgba(188,233,85,0.12)" : "#fff", cursor: "pointer", borderBottom: "1px solid var(--color-stroke-2)" }}>
+                  <button
+                    key={u.uid}
+                    type="button"
+                    onClick={() => toggleSelect(u)}
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "10px 14px",
+                      background: isSelected ? "rgba(188,233,85,0.12)" : "#fff",
+                      border: 0,
+                      borderBottom: "1px solid var(--color-stroke-2)",
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
                     <Avatar src={u.profilePhotoUrl ?? undefined} name={fullName} size="sm" />
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontFamily: "var(--font-body)", fontWeight: 600, fontSize: 14, color: "var(--color-primary)" }}>{fullName}</div>
                       {u.email && <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--color-muted)" }}>{u.email}</div>}
                     </div>
-                    {isSelected && <Icon name="check-circle" size={18} style={{ color: "var(--color-accent)" }} />}
-                  </div>
+                    {isSelected
+                      ? <Icon name="check-circle" size={18} style={{ color: "var(--color-accent-hover)" }} />
+                      : <Icon name="plus-circle" size={18} style={{ color: "var(--color-muted)" }} />}
+                  </button>
                 );
               })}
             </div>
           )}
 
+          {/* Single bulk-add button — POSTs all selected UIDs in one call. */}
           {selected.length > 0 && (
-            <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
-              <Button icon="user-plus" disabled={busy} onClick={handleAdd}>
-                Add {selected.length} member{selected.length === 1 ? "" : "s"}
+            <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+              <Button icon="user-plus" disabled={busy} onClick={handleAddSelected}>
+                {busy ? "Adding…" : `Add ${selected.length} member${selected.length === 1 ? "" : "s"}`}
               </Button>
             </div>
           )}

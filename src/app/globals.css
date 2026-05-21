@@ -667,7 +667,7 @@ code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
 .perm-chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 9999px; background: rgba(21, 42, 36, 0.06); font-family: var(--font-body); font-size: 11px; font-weight: 600; color: #152A24; text-transform: capitalize; }
 
 .modal-backdrop { position: fixed; inset: 0; background: rgba(21, 42, 36, 0.55); z-index: 300; display: flex; align-items: center; justify-content: center; padding: 24px; }
-.modal { background: #fff; border-radius: 20px; padding: 32px; max-width: 440px; width: 100%; text-align: center; box-shadow: 0 20px 50px -12px rgba(21, 42, 36, 0.4); }
+.modal { background: #fff; border-radius: 20px; padding: 32px; max-width: 440px; width: 100%; text-align: center; box-shadow: 0 20px 50px -12px rgba(21, 42, 36, 0.4); max-height: calc(100vh - 48px); overflow-y: auto; }
 .modal-ico { width: 56px; height: 56px; border-radius: 9999px; background: rgba(217, 119, 6, 0.12); color: #D97706; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px; }
 .modal h2 { font-family: var(--font-heading); font-weight: 700; font-size: 22px; color: #152A24; margin: 0 0 8px; }
 .modal p { font-family: var(--font-body); font-size: 14px; color: #41574A; margin: 0 0 22px; }
@@ -1480,4 +1480,74 @@ svg.lucide { stroke-width: 1.75; }
   /* On the tightest viewports, hide secondary nav links and only show the
      wordmark + Sign Up button. The user can still navigate via the in-page
      CTAs. */
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Mobile responsive overrides — desktop appearance unchanged.
+   All rules below only activate at narrow widths.
+   ───────────────────────────────────────────────────────────────────── */
+
+/* Tables: become horizontally scrollable instead of overflowing the page. */
+@media (max-width: 768px) {
+  .tbl-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tbl { min-width: 640px; }           /* keep desktop column widths inside the scroll area */
+  .tbl thead th,
+  .tbl tbody td { padding: 10px 12px; font-size: 13px; }
+}
+
+/* Page headers and toolbars wrap their action buttons under the title. */
+@media (max-width: 768px) {
+  .page { padding: 16px !important; }
+  .page-header { flex-direction: column; align-items: stretch; gap: 12px; }
+  .page-header h1 { font-size: 22px !important; }
+  .page-header h1 .page-sub { font-size: 14px; display: block; margin-left: 0; }
+  .audit-toolbar { flex-direction: column; align-items: stretch; gap: 10px; }
+  .audit-toolbar .audit-search { width: 100%; }
+  .audit-cats { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; padding-bottom: 4px; }
+  .audit-cats .chip { white-space: nowrap; flex-shrink: 0; }
+}
+
+/* Settings cards and form grids collapse to single column. */
+@media (max-width: 768px) {
+  .settings-card { padding: 16px !important; }
+  .settings-card h2 { font-size: 16px; }
+  .form-grid.two { grid-template-columns: 1fr !important; gap: 10px; }
+  .form-actions { flex-wrap: wrap; gap: 8px; }
+}
+
+/* KPI / quick-action / queue grids — already auto-fit, but tighten gaps. */
+@media (max-width: 768px) {
+  .kpi-grid,
+  .qa-grid,
+  .queue-grid,
+  .cell-grid,
+  .module-tiles { gap: 10px !important; }
+  .kpi { padding: 14px; }
+  .kpi-num { font-size: 22px; }
+}
+
+/* Multi-step cell-report form: stack the sticky sidebar above the panel. */
+@media (max-width: 768px) {
+  .report-form { grid-template-columns: 1fr !important; }
+  .report-steps { position: static !important; flex-direction: row; overflow-x: auto; padding-bottom: 6px; }
+  .report-step { flex-shrink: 0; min-width: 180px; }
+  .rf-card { padding: 16px !important; }
+}
+
+/* Member panel + cell card: avatar grids reflow. */
+@media (max-width: 768px) {
+  .cell-card .top { flex-wrap: wrap; gap: 8px; }
+  .cell-card .footer { flex-wrap: wrap; gap: 8px; }
+  .att-list .att-row { flex-direction: column; align-items: stretch; gap: 8px; }
+  .att-list .att-row .name { width: 100%; }
+}
+
+/* Modal/dialog: narrower viewport-aware width + scrollable body. */
+@media (max-width: 768px) {
+  .modal { width: calc(100vw - 24px) !important; max-width: none !important; max-height: calc(100vh - 24px); overflow-y: auto; }
+}
+
+/* Floating action bars at the bottom of long forms — keep buttons reachable. */
+@media (max-width: 768px) {
+  .form-actions { position: sticky; bottom: 0; background: #fff; padding: 12px 0; margin: 0 -16px -16px; padding-left: 16px; padding-right: 16px; border-top: 1px solid var(--color-stroke); z-index: 5; }
 }

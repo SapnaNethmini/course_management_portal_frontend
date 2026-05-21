@@ -25,7 +25,6 @@ import { ForgotPasswordModal } from "./ForgotPasswordModal";
 import { FederatedSignInButtons } from "./FederatedSignInButtons";
 import { LockoutBanner } from "./LockoutBanner";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
-import { DevLoginPanel } from "./DevLoginPanel";
 
 export function LoginForm() {
   const router = useRouter();
@@ -278,8 +277,6 @@ export function LoginForm() {
           </Link>
         </div>
       </div>
-
-      <DevLoginPanel />
 
       <ForgotPasswordModal
         open={forgotOpen}

@@ -1,11 +1,14 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { MEMBER_NAV, STUDENT_NAV, type NavItem } from "@/components/layout/RoleNav";
 import { useSessionUser } from "@/application/hooks/useSessionUser";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
+import { useAppDispatch } from "@/application/hooks/useAppDispatch";
+import { setActiveRole } from "@/application/slices/sessionSlice";
 
 const TITLE_MAP: Array<{ test: RegExp; title: string }> = [
   { test: /^\/home/, title: "Home" },
@@ -36,7 +39,19 @@ export default function AuthedLayout({ children }: { children: React.ReactNode }
   const pathname = usePathname() ?? "";
   const title = TITLE_MAP.find((m) => m.test.test(pathname))?.title ?? "TCCR";
   const user = useSessionUser();
+  const dispatch = useAppDispatch();
   const activeRole = useAppSelector((s) => s.session.activeRole);
+
+  // Sync activeRole to "member" on Member-specific pages (home, school,
+  // my-cells, my-requests, apply). The shared surfaces (profile, notifications)
+  // intentionally do NOT update activeRole — they preserve whatever the user
+  // came from (Member or Student).
+  const isMemberSurface = /^\/(home|school|my-cells|my-requests|apply)/.test(pathname);
+  useEffect(() => {
+    if (user && isMemberSurface && activeRole !== "member") {
+      dispatch(setActiveRole("member"));
+    }
+  }, [user, isMemberSurface, activeRole, dispatch]);
 
   // Default: Member shell for all (authed) routes.
   let navItems: NavItem[] = MEMBER_NAV;

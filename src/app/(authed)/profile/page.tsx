@@ -25,6 +25,7 @@ export default function ProfilePage() {
   // Identity fields
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName]   = useState("");
+  const [phone, setPhone]         = useState("");
   const [dirty, setDirty]         = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -42,6 +43,7 @@ export default function ProfilePage() {
     if (P.user) {
       setFirstName(P.user.firstName ?? "");
       setLastName(P.user.lastName  ?? "");
+      setPhone(P.user.phone ?? "");
       setDirty(false);
     }
   }, [P.user]);
@@ -60,6 +62,7 @@ export default function ProfilePage() {
     const changes: Parameters<typeof P.updateProfile>[0] = {};
     if (firstName.trim() !== (P.user!.firstName ?? "")) changes.firstName = firstName.trim();
     if (lastName.trim()  !== (P.user!.lastName  ?? "")) changes.lastName  = lastName.trim();
+    if (phone.trim()     !== (P.user!.phone     ?? "")) changes.phone     = phone.trim();
     const ok = await P.updateProfile(changes);
     if (ok) setDirty(false);
   };
@@ -67,6 +70,7 @@ export default function ProfilePage() {
   const onCancel = () => {
     setFirstName(P.user!.firstName ?? "");
     setLastName(P.user!.lastName  ?? "");
+    setPhone(P.user!.phone        ?? "");
     setDirty(false);
   };
 
@@ -150,6 +154,9 @@ export default function ProfilePage() {
             onChange={(e) => { setFirstName(e.target.value); setDirty(true); if (P.fieldErrors.firstName) P.clearFieldError("firstName"); }} />
           <Input label="Last name" value={lastName} error={P.fieldErrors.lastName}
             onChange={(e) => { setLastName(e.target.value); setDirty(true); if (P.fieldErrors.lastName) P.clearFieldError("lastName"); }} />
+          <Input label="Phone number" type="tel" value={phone} error={P.fieldErrors.phone}
+            placeholder="+94 77 000 0000"
+            onChange={(e) => { setPhone(e.target.value); setDirty(true); if (P.fieldErrors.phone) P.clearFieldError("phone"); }} />
           <Input label="Email" type="email" value={P.user.email} disabled hint="Email cannot be changed." />
         </div>
 

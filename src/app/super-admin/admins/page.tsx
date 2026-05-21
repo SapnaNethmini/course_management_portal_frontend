@@ -64,16 +64,41 @@ export default function SuperAdminAdminsPage() {
     try {
       const collected: AdminUser[] = [];
       let cursor: string | undefined;
+      let primaryTotal = 0;
       for (let i = 0; i < 20; i++) {
         const params = new URLSearchParams({ limit: "100" });
         if (cursor) params.append("cursor", cursor);
         const data = await apiRequest<PagedResponse>(`/super-admin/admins?${params}`);
         collected.push(...(data.items ?? []));
+        primaryTotal = data.total ?? primaryTotal;
         cursor = data.nextCursor ?? undefined;
         if (!cursor) break;
       }
-      setAdmins(collected);
-      dispatch(setTotalAdmins(collected.length));
+
+      // Fallback: the /super-admin/admins endpoint sometimes returns an empty
+      // `items` array while `total` reports 30+ admins. When that happens, fall
+      // back to /users filtered to admin/super_admin role membership.
+      if (collected.length === 0 && primaryTotal > 0) {
+        const fallback: AdminUser[] = [];
+        let cur: string | undefined;
+        for (let i = 0; i < 20; i++) {
+          const params = new URLSearchParams({ limit: "100" });
+          if (cur) params.append("cursor", cur);
+          const data = await apiRequest<PagedResponse>(`/users?${params}`);
+          const adminsOnly = (data.items ?? []).filter((u) => {
+            const roles = u.roles ?? (u.role ? [u.role] : []);
+            return roles.includes("admin") || roles.includes("super_admin");
+          });
+          fallback.push(...adminsOnly);
+          cur = data.nextCursor ?? undefined;
+          if (!cur) break;
+        }
+        setAdmins(fallback);
+        dispatch(setTotalAdmins(fallback.length));
+      } else {
+        setAdmins(collected);
+        dispatch(setTotalAdmins(collected.length));
+      }
     } catch (err) {
       if (err instanceof ApiRequestError && err.status !== 401) {
         flash("warning", "Failed to load administrators");
@@ -81,7 +106,7 @@ export default function SuperAdminAdminsPage() {
     } finally {
       setLoading(false);
     }
-  }, [sessionUser, flash]);
+  }, [sessionUser, flash, dispatch]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 

@@ -5,10 +5,12 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 
-/** V2 cell member shape returned by GET /cells/:id */
+/** V2 cell member shape returned by GET /cells/:id (enriched in useCell). */
 export interface CellMemberV2 {
   uid: string;
   displayName: string;
+  /** Platform roles[] from the user record — used to render the right pill. */
+  roles?: string[];
 }
 
 interface Props {
@@ -42,23 +44,37 @@ export function CellMembersPanel({ members, leaderUid, canEdit, onRemove, onAddC
         )}
         {members.map((m) => {
           const isLeader = m.uid === leaderUid;
+          const roles = m.roles ?? [];
+          // Pick the highest-priority role to display.
+          const roleLabel =
+            roles.includes("super_admin") ? "Super Admin" :
+            roles.includes("admin")       ? "Admin" :
+            roles.includes("g12")         ? "G12 Leader" :
+            roles.includes("leader")      ? "Leader" :
+            roles.includes("student")     ? "Student" :
+            "Member";
+          // CSS class for the colored chip — map roles to known classes.
+          const roleClass =
+            roles.includes("g12")    ? "g12"     :
+            roles.includes("leader") ? "care"    :
+            roles.includes("admin") || roles.includes("super_admin") ? "outreach" :
+            "children";
           return (
-            <div key={m.uid} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 12, alignItems: "center", padding: "10px 14px", background: "#FAFAFA", borderRadius: 10 }}>
+            <div key={m.uid} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 12, alignItems: "center", padding: "10px 14px", background: "#FAFAFA", borderRadius: 10 }}>
               <Avatar name={m.displayName} size="sm" />
               <div style={{ fontFamily: "var(--font-body)", fontSize: 14, fontWeight: 500, color: "var(--color-primary)" }}>
                 {m.displayName}
               </div>
-              {isLeader ? (
-                <span className="cell-type g12">Leader</span>
-              ) : (
-                canEdit && onRemove && (
-                  <button type="button" aria-label={`Remove ${m.displayName}`} disabled={busy}
-                    onClick={() => onRemove(m.uid)}
-                    style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--color-muted)", padding: 4, display: "flex" }}>
-                    <Icon name="x" size={14} />
-                  </button>
-                )
-              )}
+              <span className={`cell-type ${roleClass}`}>
+                {isLeader ? `${roleLabel} · Cell leader` : roleLabel}
+              </span>
+              {!isLeader && canEdit && onRemove ? (
+                <button type="button" aria-label={`Remove ${m.displayName}`} disabled={busy}
+                  onClick={() => onRemove(m.uid)}
+                  style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--color-muted)", padding: 4, display: "flex" }}>
+                  <Icon name="x" size={14} />
+                </button>
+              ) : <span />}
             </div>
           );
         })}

@@ -46,7 +46,8 @@ export const ADMIN_NAV: NavItem[] = [
   { id: "courses",  labelKey: "courses",  ico: "book-open", href: "/admin/courses" },
   { id: "students", labelKey: "users",    ico: "users",     href: "/admin/students" },
   { group: "System" },
-  { id: "profile",  labelKey: "profile",  ico: "user",      href: "/profile" },
+  { id: "notifications", labelKey: "notifications", ico: "bell", href: "/admin/notifications" },
+  { id: "profile",       labelKey: "profile",       ico: "user", href: "/admin/profile" },
 ];
 
 // ---------- V2: Member / Leader / G12 navs ----------
@@ -72,10 +73,11 @@ export const LEADER_NAV: NavItem[] = [
   { id: "home",          labelKey: "home",          ico: "home",             href: "/home" },
   { id: "dashboard",     labelKey: "dashboard",     ico: "layout-dashboard", href: "/leader/dashboard" },
   { id: "cells",         labelKey: "cells",         ico: "users",            href: "/cells" },
+  { id: "analytics",     labelKey: "analytics",     ico: "bar-chart",        href: "/leader/analytics" },
   { id: "school",        labelKey: "bibleSchool",   ico: "book-open",        href: "/school" },
   { group: "Account" },
-  { id: "notifications", labelKey: "notifications", ico: "bell",             href: "/notifications" },
-  { id: "profile",       labelKey: "profile",       ico: "user",             href: "/profile" },
+  { id: "notifications", labelKey: "notifications", ico: "bell",             href: "/leader/notifications" },
+  { id: "profile",       labelKey: "profile",       ico: "user",             href: "/leader/profile" },
 ];
 
 export const G12_NAV: NavItem[] = [
@@ -85,10 +87,11 @@ export const G12_NAV: NavItem[] = [
   { id: "cells",         labelKey: "cells",          ico: "users",            href: "/cells" },
   { id: "network",       labelKey: "leadersNetwork", ico: "share-2",          href: "/g12/network" },
   { id: "promote",       labelKey: "promote",        ico: "user-plus",        href: "/g12/promote" },
+  { id: "analytics",     labelKey: "analytics",      ico: "bar-chart",        href: "/g12/analytics" },
   { id: "school",        labelKey: "bibleSchool",    ico: "book-open",        href: "/school" },
   { group: "Account" },
-  { id: "notifications", labelKey: "notifications",  ico: "bell",             href: "/notifications" },
-  { id: "profile",       labelKey: "profile",        ico: "user",             href: "/profile" },
+  { id: "notifications", labelKey: "notifications",  ico: "bell",             href: "/g12/notifications" },
+  { id: "profile",       labelKey: "profile",        ico: "user",             href: "/g12/profile" },
 ];
 
 export const SUPERADMIN_NAV: NavItem[] = [
@@ -102,6 +105,6 @@ export const SUPERADMIN_NAV: NavItem[] = [
   { id: "courses",  labelKey: "courses",   ico: "book-open", href: "/super-admin/courses" },
   { id: "students", labelKey: "users",     ico: "users",     href: "/super-admin/students" },
   { group: "System" },
-  { id: "profile",  labelKey: "profile",   ico: "user",     href: "/profile" },
-  { id: "audit",    labelKey: "auditLog",  ico: "history",  href: "/super-admin/audit-log" },
+  { id: "notifications", labelKey: "notifications", ico: "bell",    href: "/super-admin/notifications" },
+  { id: "profile",       labelKey: "profile",       ico: "user",    href: "/super-admin/profile" },
 ];

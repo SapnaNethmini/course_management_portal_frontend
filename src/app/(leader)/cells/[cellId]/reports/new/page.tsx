@@ -52,11 +52,14 @@ export default function NewCellReportPage() {
           g12LeaderUid:         cell.g12LeaderUid,
           attendance:           (payload.attendance ?? []).map((a) => {
             const entry = a as unknown as Record<string, unknown>;
+            const memberId = (entry.memberId ?? entry.userUid) as string | undefined;
+            const isGuest = typeof memberId === "string" && memberId.startsWith("guest-");
             return {
-              userUid: (entry.userUid ?? entry.memberId) as string | undefined,
+              // Guests don't have a real UID — drop the synthetic one and flag them.
+              userUid: isGuest ? undefined : memberId,
               name:    ((entry.name ?? entry.memberName) as string) ?? "",
               status:  a.status as "present" | "absent" | "new",
-              isNew:   (entry.isNew as boolean) ?? false,
+              isNew:   isGuest || entry.isNew === true,
             };
           }),
           additionalVisitors:   payload.visitorCount ?? 0,

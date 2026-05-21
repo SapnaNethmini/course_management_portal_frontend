@@ -1,173 +1,346 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { Input } from "@/components/ui/Input";
-import { Typeahead, type TypeaheadEntry } from "@/components/ui/Typeahead";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { AddNewMemberDialog, type AddNewMemberPayload } from "@/components/admin/AddNewMemberDialog";
 import { RoleBadgeStack } from "@/components/user/RoleBadgeStack";
 import { useAppDispatch } from "@/application/hooks/useAppDispatch";
+import { useAppSelector } from "@/application/hooks/useAppSelector";
 import { pushToast } from "@/application/slices/uiSlice";
-import { TCCR_DIRECTORY } from "@/lib/mock/tccrDirectory";
+import { apiRequest, ApiRequestError } from "@/infrastructure/api/request";
+
+interface UserRow {
+  uid: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  status?: string;
+  profilePhotoUrl?: string | null;
+  roles?: string[];
+  createdAt?: string;
+}
+
+interface PagedResponse {
+  items: UserRow[];
+  nextCursor: string | null;
+  total: number;
+}
+
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+const PAGE_SIZE = 25;
 
 export default function G12PromotePage() {
   const dispatch = useAppDispatch();
-  const [search, setSearch] = useState("");
-  const [showInvite, setShowInvite] = useState(false);
+  const sessionUser = useAppSelector((s) => s.session.user);
 
-  // Invite form state
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"leader" | "g12">("leader");
+  const [allUsers, setAllUsers] = useState<UserRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const [promoting, setPromoting] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{ uid: string; name: string; role: "leader" | "g12" } | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
-  const directory = useMemo<TypeaheadEntry[]>(
-    () => TCCR_DIRECTORY.map((d) => ({ id: d.id, name: d.name, avatar: d.avatar, roles: d.roles })),
-    [],
-  );
+  useEffect(() => {
+    if (!sessionUser) return;
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      try {
+        const collected: UserRow[] = [];
+        let cursor: string | undefined;
+        for (let i = 0; i < 20; i++) {
+          // List only Members — no Leaders, G12s, Admins, or Super Admins.
+          const params = new URLSearchParams({ role: "member", limit: "100" });
+          if (cursor) params.append("cursor", cursor);
+          const data = await apiRequest<PagedResponse>(`/users?${params}`);
+          collected.push(...(data.items ?? []));
+          cursor = data.nextCursor ?? undefined;
+          if (!cursor) break;
+        }
+        // Belt-and-braces — drop anyone with elevated roles in case the
+        // backend's role filter returns supersets.
+        const onlyMembers = collected.filter((u) => {
+          const roles = u.roles ?? [];
+          return !roles.includes("leader")
+              && !roles.includes("g12")
+              && !roles.includes("admin")
+              && !roles.includes("super_admin");
+        });
+        if (!cancelled) setAllUsers(onlyMembers);
+      } catch (err) {
+        if (err instanceof ApiRequestError && err.status !== 401) {
+          dispatch(pushToast({ tone: "warning", title: "Failed to load members" }));
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [sessionUser, dispatch]);
 
-  // Promotable list — members who don't already hold leader/g12
-  const promotable = useMemo(
-    () => TCCR_DIRECTORY.filter((d) => !d.roles.includes("g12")),
-    [],
-  );
-
-  const onPromote = (id: string, name: string, to: "leader" | "g12") => {
-    dispatch(
-      pushToast({
-        tone: "success",
-        title: `Promoted to ${to === "leader" ? "Cell Leader" : "G12 Leader"}`,
-        message: `${name} now has the ${to} role.`,
-      }),
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return allUsers;
+    return allUsers.filter((u) =>
+      `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q),
     );
-  };
+  }, [allUsers, query]);
 
-  const onInvite = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!firstName.trim() || !lastName.trim() || !email.trim()) return;
-    dispatch(
-      pushToast({
+  useEffect(() => { setPage(0); }, [query]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const rows = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+
+  const runPromote = async (uid: string, role: "leader" | "g12") => {
+    setPromoting(uid);
+    try {
+      const updated = await apiRequest<{ roles?: string[] } | undefined>(`/users/${uid}/roles`, {
+        method: "PATCH",
+        body: { role, action: "add" },
+      });
+      setAllUsers((prev) =>
+        prev.map((u) =>
+          u.uid === uid
+            ? { ...u, roles: updated?.roles ?? [...new Set([...(u.roles ?? []), role])] }
+            : u,
+        ),
+      );
+      dispatch(pushToast({
         tone: "success",
-        title: "Invite sent",
-        message: `${firstName} ${lastName} will receive a sign-up email.`,
-      }),
-    );
-    setFirstName("");
-    setLastName("");
-    setEmail("");
-    setShowInvite(false);
+        title: role === "g12" ? "Promoted to G12 Leader" : "Promoted to Leader",
+      }));
+    } catch (err) {
+      let title = "Promote failed";
+      let message: string | undefined;
+      if (err instanceof ApiRequestError) {
+        if (err.status === 403) title = "Not permitted";
+        else if (err.status === 409) { title = "Role conflict"; message = err.message; }
+        else if (err.message) message = err.message;
+      }
+      dispatch(pushToast({ tone: "warning", title, message }));
+    } finally {
+      setPromoting(null);
+      setConfirm(null);
+    }
   };
 
   return (
     <div className="page">
-      <header
-        className="page-header"
-        style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}
-      >
+      <div className="page-header">
         <div>
-          <h1 style={{ margin: 0, fontFamily: "var(--font-heading)", fontSize: 32, color: "var(--color-primary)", letterSpacing: "-0.01em" }}>
-            Promote a member
-          </h1>
-          <p style={{ margin: "8px 0 0", fontFamily: "var(--font-body)", fontSize: 15, color: "var(--color-body-green)" }}>
-            Find an existing TCCR member or invite a new one to take on a leadership role.
-          </p>
+          <h1>Promote a member</h1>
+          <div className="greeting">
+            <b style={{ color: "#152A24" }}>{loading ? "…" : allUsers.length}</b> members eligible for promotion.
+            Promote a Member to Leader or G12 here — roles are additive, so members keep their existing access.
+          </div>
         </div>
-        <Button variant={showInvite ? "ghost" : "secondary-light"} icon={showInvite ? "x" : "user-plus"} onClick={() => setShowInvite((v) => !v)}>
-          {showInvite ? "Close invite" : "Invite new user"}
+        <Button icon="user-plus" onClick={() => setAddOpen(true)}>
+          Add a new member
         </Button>
-      </header>
+      </div>
 
-      <div className="role-banner" style={{ marginBottom: 20 }}>
+      <div className="role-banner">
         <div className="ico">
           <Icon name="info" size={20} />
         </div>
         <div className="b-body">
-          <h3>Search before inviting</h3>
-          <p>Many promotable members are already registered. Use the search to avoid duplicate invites.</p>
+          <h3>How promotions work</h3>
+          <p>
+            Members ask a pastor or G12 leader in person to become a Leader or G12. You then
+            add the role here — roles are additive (the user keeps Member access).
+          </p>
         </div>
       </div>
 
-      <div style={{ marginBottom: 18, maxWidth: 480 }}>
-        <Typeahead
-          label="Find a TCCR member"
-          placeholder="Search by name…"
-          directory={directory}
-          value={search}
-          onChange={setSearch}
-          onPick={(p) => setSearch(p.name)}
-          onAddUnregistered={(name) => {
-            setShowInvite(true);
-            const [f, ...rest] = name.split(" ");
-            setFirstName(f ?? "");
-            setLastName(rest.join(" "));
-          }}
-        />
+      <div className="audit-toolbar">
+        <div className="audit-search">
+          <Icon name="search" size={16} />
+          <input
+            placeholder="Search by name or email…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
       </div>
 
-      {showInvite && (
-        <form
-          onSubmit={onInvite}
-          style={{ background: "#fff", border: "1px solid var(--color-stroke)", borderRadius: 18, padding: 22, marginBottom: 20, maxWidth: 720 }}
-        >
-          <h3 style={{ margin: "0 0 14px", fontFamily: "var(--font-heading)", fontSize: 16, color: "var(--color-primary)" }}>
-            Invite a new user
-          </h3>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Input label="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-            <Input label="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-          </div>
-          <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <div style={{ marginTop: 12 }}>
-            <label className="label" style={{ display: "block", fontFamily: "var(--font-body)", fontSize: 12, fontWeight: 600, color: "var(--color-body-green)", marginBottom: 8 }}>
-              Role to assign on sign-up
-            </label>
-            <div className="rf-yesno">
-              <label className={inviteRole === "leader" ? "on" : ""}>
-                <input type="radio" checked={inviteRole === "leader"} onChange={() => setInviteRole("leader")} /> Cell Leader
-              </label>
-              <label className={inviteRole === "g12" ? "on" : ""}>
-                <input type="radio" checked={inviteRole === "g12"} onChange={() => setInviteRole("g12")} /> G12 Leader
-              </label>
+      <div className="tbl-card">
+        <table className="tbl" style={{ tableLayout: "fixed", width: "100%" }}>
+          <colgroup>
+            <col style={{ width: "30%" }} />
+            <col style={{ width: "22%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "24%" }} />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Roles</th>
+              <th>Status</th>
+              <th>Joined</th>
+              <th style={{ textAlign: "right" }}>Promote</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && rows.length === 0 && (
+              <tr>
+                <td colSpan={5} style={{ textAlign: "center", padding: 40 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, color: "var(--color-muted)" }}>
+                    <Icon name="loader" size={18} />
+                    <span style={{ fontFamily: "var(--font-body)", fontSize: 14 }}>Loading…</span>
+                  </div>
+                </td>
+              </tr>
+            )}
+            {!loading && rows.length === 0 && (
+              <tr>
+                <td colSpan={5}>
+                  <div className="empty">
+                    <h3>No members found</h3>
+                    <p>{query ? "Try a different search term." : "No promotable members yet."}</p>
+                  </div>
+                </td>
+              </tr>
+            )}
+            {rows.map((u) => {
+              const fullName = `${u.firstName} ${u.lastName}`.trim();
+              // V2 spec: every authed user holds `member` at minimum.
+              const rawRoles = u.roles && u.roles.length > 0 ? u.roles : ["member"];
+              const roles = rawRoles.includes("member") ? rawRoles : [...rawRoles, "member"];
+              const hasLeader = roles.includes("leader");
+              const hasG12 = roles.includes("g12");
+              const isSuspended = u.status === "suspended";
+              const showLeaderBtn = !hasLeader && !hasG12;
+              const showG12Btn = !hasG12;
+              const isThisRowPromoting = promoting === u.uid;
+              const promoteDisabled = isThisRowPromoting || isSuspended;
+              const suspendedTitle = isSuspended ? "Reactivate the user before promoting" : undefined;
+
+              return (
+                <tr key={u.uid}>
+                  <td>
+                    <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                      <Avatar src={u.profilePhotoUrl ?? undefined} size="sm" name={fullName || u.uid} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {fullName || u.uid.slice(0, 12) + "…"}
+                        </div>
+                        <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "#41574A", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {u.email}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <RoleBadgeStack roles={roles} />
+                  </td>
+                  <td>
+                    {isSuspended
+                      ? <Badge tone="error">Suspended</Badge>
+                      : <Badge tone="success">Active</Badge>}
+                  </td>
+                  <td className="muted">{formatDate(u.createdAt)}</td>
+                  <td style={{ textAlign: "right" }} title={suspendedTitle}>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end", minWidth: 220 }}>
+                      {showLeaderBtn ? (
+                        <Button size="sm" variant="ghost" icon="chevron-up" disabled={promoteDisabled}
+                          onClick={() => setConfirm({ uid: u.uid, name: fullName || u.uid, role: "leader" })}>
+                          {isThisRowPromoting ? "…" : "Make Leader"}
+                        </Button>
+                      ) : (
+                        <span style={{ display: "inline-block", minWidth: 110 }} />
+                      )}
+                      {showG12Btn ? (
+                        <Button size="sm" icon="chevron-up" disabled={promoteDisabled}
+                          onClick={() => setConfirm({ uid: u.uid, name: fullName || u.uid, role: "g12" })}>
+                          {isThisRowPromoting ? "…" : "Make G12"}
+                        </Button>
+                      ) : (
+                        <span style={{ display: "inline-block", minWidth: 90 }} />
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        {filtered.length > PAGE_SIZE && (
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "12px 16px",
+            borderTop: "1px solid var(--color-stroke)",
+            fontFamily: "var(--font-body)",
+            fontSize: 13,
+            color: "var(--color-body-green)",
+            flexWrap: "wrap",
+            gap: 10,
+          }}>
+            <span>
+              Showing <b>{safePage * PAGE_SIZE + 1}</b>–<b>{Math.min((safePage + 1) * PAGE_SIZE, filtered.length)}</b> of <b>{filtered.length}</b>
+            </span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button size="sm" variant="secondary" icon="chevron-left" disabled={safePage === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                Previous
+              </Button>
+              <Button size="sm" variant="secondary" iconAfter="chevron-right" disabled={safePage >= totalPages - 1} onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}>
+                Next
+              </Button>
             </div>
           </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
-            <Button type="button" variant="ghost" onClick={() => setShowInvite(false)}>Cancel</Button>
-            <Button type="submit" icon="send">Send invite</Button>
-          </div>
-        </form>
-      )}
-
-      <h2 style={{ margin: "12px 0 12px", fontFamily: "var(--font-heading)", fontSize: 17, fontWeight: 600, color: "var(--color-primary)" }}>
-        Latest TCCR members
-      </h2>
-
-      <div>
-        {promotable.map((u) => {
-          const isLeader = u.roles.includes("leader");
-          return (
-            <div key={u.id} className="promote-row">
-              <Avatar src={u.avatar} name={u.name} />
-              <div className="b-body">
-                <div className="name">{u.name}</div>
-                <div className="meta">
-                  <RoleBadgeStack roles={u.roles} />
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                {!isLeader && (
-                  <Button size="sm" variant="ghost" onClick={() => onPromote(u.id, u.name, "leader")}>
-                    Promote to Leader
-                  </Button>
-                )}
-                <Button size="sm" onClick={() => onPromote(u.id, u.name, "g12")}>
-                  Promote to G12
-                </Button>
-              </div>
-            </div>
-          );
-        })}
+        )}
       </div>
+
+      <ConfirmDialog
+        open={!!confirm}
+        title={
+          confirm?.role === "g12"
+            ? `Promote ${confirm?.name} to G12 Leader?`
+            : `Promote ${confirm?.name ?? ""} to Leader?`
+        }
+        message={
+          confirm
+            ? `This adds the ${confirm.role === "g12" ? "G12" : "Leader"} role to ${confirm.name}. Roles are additive — they keep their existing access.`
+            : undefined
+        }
+        confirmLabel={confirm?.role === "g12" ? "Yes, promote to G12" : "Yes, promote to Leader"}
+        onConfirm={() => { if (confirm) runPromote(confirm.uid, confirm.role); }}
+        onCancel={() => setConfirm(null)}
+      />
+
+      <AddNewMemberDialog
+        open={addOpen}
+        allowedRoles={["leader", "g12"]}
+        onCancel={() => setAddOpen(false)}
+        onSubmit={(payload: AddNewMemberPayload) => {
+          // Backend wiring pending — keep the payload available for the future
+          // POST /<TBD endpoint> integration.
+          // eslint-disable-next-line no-console
+          console.log("[AddNewMember] payload (will POST to backend once API ships):", payload);
+          dispatch(pushToast({
+            tone: "success",
+            title: "Invite queued (UI only)",
+            message: `${payload.firstName} ${payload.lastName} as ${payload.role.toUpperCase()} — backend integration pending.`,
+          }));
+          setAddOpen(false);
+        }}
+      />
     </div>
   );
 }

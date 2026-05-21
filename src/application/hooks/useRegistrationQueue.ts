@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAppDispatch } from "./useAppDispatch";
 import { useAppSelector } from "./useAppSelector";
-import { pushToast, setPendingRegistrations } from "@/application/slices/uiSlice";
+import { pushToast } from "@/application/slices/uiSlice";
 import { apiRequest } from "@/infrastructure/api/request";
 import { auth } from "@/infrastructure/firebase/auth";
 
@@ -101,7 +101,11 @@ export function useRegistrationQueue() {
         setTotal(totalCount);
         setSelected(new Set());
         setPage(0);
-        dispatch(setPendingRegistrations(totalCount));
+        // NOTE: This V1 hook does NOT drive the sidebar `pendingRegistrations`
+        // badge anymore — the V2 endpoint `/role-requests` is the source of
+        // truth (see `useSidebarCounts` + `useRoleRequestQueue`). The V1
+        // endpoint returns stale registrations and would otherwise overwrite
+        // the correct count when admins land on the dashboard.
       } catch {
         dispatch(pushToast({ tone: "warning", title: "Failed to load registrations" }));
       } finally {
@@ -170,7 +174,10 @@ export function useRegistrationQueue() {
   const refresh = () => fetchAll();
 
   const updateStatus = (id: string, newState: string) => {
-    setAllItems((prev) => prev.map((r) => (r.id === id ? { ...r, state: newState, status: newState } : r)));
+    setAllItems((prev) => {
+      // V1 hook: no sidebar dispatch (see fetchAll note).
+      return prev.map((r) => (r.id === id ? { ...r, state: newState, status: newState } : r));
+    });
   };
 
   const approve = async (id: string) => {
@@ -178,8 +185,6 @@ export function useRegistrationQueue() {
       await apiRequest(`/admin/registrations/${id}/approve`, { method: "POST" });
       updateStatus(id, "approved");
       dispatch(pushToast({ tone: "success", title: "Registration approved", message: "The student has been notified." }));
-      dispatch(setPendingRegistrations(Math.max(0, total - 1)));
-      setTotal((t) => Math.max(0, t - 1));
     } catch {
       dispatch(pushToast({ tone: "warning", title: "Approval failed", message: "This registration may have already been processed." }));
     }
@@ -193,8 +198,6 @@ export function useRegistrationQueue() {
       });
       updateStatus(id, "rejected");
       dispatch(pushToast({ tone: "warning", title: "Registration rejected", message: "The student has been notified." }));
-      dispatch(setPendingRegistrations(Math.max(0, total - 1)));
-      setTotal((t) => Math.max(0, t - 1));
     } catch {
       dispatch(pushToast({ tone: "warning", title: "Rejection failed" }));
     }
@@ -213,8 +216,6 @@ export function useRegistrationQueue() {
       );
       setSelected(new Set());
       const approvedCount = result.approved.length;
-      dispatch(setPendingRegistrations(Math.max(0, total - approvedCount)));
-      setTotal((t) => Math.max(0, t - approvedCount));
       if (result.failed.length === 0) {
         dispatch(pushToast({ tone: "success", title: `${approvedCount} registrations approved` }));
       } else {

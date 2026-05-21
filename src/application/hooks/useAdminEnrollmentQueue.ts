@@ -51,6 +51,8 @@ function getTimestamp(r: EnrollmentItem): number {
   return isNaN(d) ? 0 : d;
 }
 
+export type EnrollmentStatusFilter = "pending" | "approved" | "rejected" | "all";
+
 export function useAdminEnrollmentQueue(courseIdFilter?: string) {
   const dispatch = useAppDispatch();
   const user = useAppSelector((s) => s.session.user);
@@ -59,6 +61,7 @@ export function useAdminEnrollmentQueue(courseIdFilter?: string) {
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<EnrollmentStatusFilter>("pending");
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -80,15 +83,17 @@ export function useAdminEnrollmentQueue(courseIdFilter?: string) {
         pageNo += 1;
       } while (cursor && pageNo < MAX_PAGES);
 
-      // Step 2 — filter to pending only.
-      const pending = collected.filter((e) => isPending(e.state));
+      // Step 2 — keep ALL states (pending/approved/rejected) so the page can
+      // filter client-side without re-fetching. Status counts and badges still
+      // distinguish them via isPending / isApproved / isRejected helpers.
+      const everyEnrollment = collected;
 
       // Step 3a — enrich with student profiles in parallel.
-      const uniqueUids = [...new Set(pending.map((e) => e.studentUid))];
+      const uniqueUids = [...new Set(everyEnrollment.map((e) => e.studentUid))];
       const profileMap = new Map<string, StudentProfile>();
 
       // Step 3b — enrich with course titles in parallel.
-      const uniqueCourseIds = [...new Set(pending.map((e) => e.courseId))];
+      const uniqueCourseIds = [...new Set(everyEnrollment.map((e) => e.courseId))];
       const courseTitleMap = new Map<string, string>();
 
       await Promise.allSettled([
@@ -110,7 +115,7 @@ export function useAdminEnrollmentQueue(courseIdFilter?: string) {
         }),
       ]);
 
-      const enriched = pending.map((e) => ({
+      const enriched = everyEnrollment.map((e) => ({
         ...e,
         student: profileMap.get(e.studentUid),
         courseTitle: courseTitleMap.get(e.courseId),
@@ -120,7 +125,8 @@ export function useAdminEnrollmentQueue(courseIdFilter?: string) {
       setTotal(enriched.length);
       setSelected(new Set());
       setPage(0);
-      dispatch(setPendingEnrollments(enriched.length));
+      const pendingTotal = enriched.filter((e) => isPending(e.state)).length;
+      dispatch(setPendingEnrollments(pendingTotal));
     } catch {
       dispatch(pushToast({ tone: "warning", title: "Failed to load enrollments" }));
     } finally {
@@ -133,11 +139,19 @@ export function useAdminEnrollmentQueue(courseIdFilter?: string) {
     fetchAll();
   }, [user, fetchAll]);
 
-  useEffect(() => { setPage(0); }, [search]);
+  useEffect(() => { setPage(0); }, [search, statusFilter]);
 
-  // Sort newest first + client-side search by student name, email, or course ID.
+  // Sort newest first + status filter + client-side search.
   const sortedFiltered = useMemo(() => {
     let arr = [...allItems].sort((a, b) => getTimestamp(b) - getTimestamp(a));
+    if (statusFilter !== "all") {
+      arr = arr.filter((r) => {
+        if (statusFilter === "pending")  return isPending(r.state);
+        if (statusFilter === "approved") return isApproved(r.state);
+        if (statusFilter === "rejected") return isRejected(r.state);
+        return true;
+      });
+    }
     const q = search.trim().toLowerCase();
     if (q) {
       arr = arr.filter((r) => {
@@ -154,7 +168,7 @@ export function useAdminEnrollmentQueue(courseIdFilter?: string) {
       });
     }
     return arr;
-  }, [allItems, search]);
+  }, [allItems, search, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(sortedFiltered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
@@ -192,8 +206,10 @@ export function useAdminEnrollmentQueue(courseIdFilter?: string) {
       await apiRequest(`/enrollments/${id}/approve`, { method: "POST" });
       updateState(id, "approved");
       dispatch(pushToast({ tone: "success", title: "Enrollment approved", message: "The student has been notified." }));
-      dispatch(setPendingEnrollments(Math.max(0, total - 1)));
-      setTotal((t) => Math.max(0, t - 1));
+      // Pending badge: one fewer pending. Total stays — the row is now Approved.
+      dispatch(setPendingEnrollments(
+        Math.max(0, allItems.filter((r) => isPending(r.state) && r.id !== id).length),
+      ));
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 409) {
         dispatch(pushToast({ tone: "warning", title: "Already processed" }));
@@ -211,8 +227,9 @@ export function useAdminEnrollmentQueue(courseIdFilter?: string) {
       });
       updateState(id, "rejected");
       dispatch(pushToast({ tone: "warning", title: "Enrollment rejected", message: "The student has been notified." }));
-      dispatch(setPendingEnrollments(Math.max(0, total - 1)));
-      setTotal((t) => Math.max(0, t - 1));
+      dispatch(setPendingEnrollments(
+        Math.max(0, allItems.filter((r) => isPending(r.state) && r.id !== id).length),
+      ));
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 409) {
         dispatch(pushToast({ tone: "warning", title: "Already processed" }));
@@ -228,6 +245,8 @@ export function useAdminEnrollmentQueue(courseIdFilter?: string) {
     total,
     search,
     setSearch,
+    statusFilter,
+    setStatusFilter,
     selected,
     toggle,
     toggleAll,

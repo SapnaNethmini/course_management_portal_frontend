@@ -8,51 +8,90 @@ import { KpiMini } from "@/components/analytics/KpiMini";
 import { ChartCard } from "@/components/analytics/ChartCard";
 import { WeeklyAttendanceBars } from "@/components/analytics/WeeklyAttendanceBars";
 import { MeetingTypeDonut } from "@/components/analytics/MeetingTypeDonut";
-import { useAppSelector } from "@/application/hooks/useAppSelector";
-import { listCellsForLeader, listCells } from "@/lib/mock/cells";
-import { listCellReports } from "@/lib/mock/cellReports";
+import { EmptyChart } from "@/components/analytics/EmptyChart";
+import { useMyCells } from "@/application/hooks/useCells";
+import {
+  useCellsWeekly,
+  useAttendance,
+  useMeetingTypes,
+} from "@/application/hooks/useAnalytics";
+import { useReportAggregates } from "@/application/hooks/useReportAggregates";
+
+const TYPE_COLORS: Record<string, string> = {
+  care: "#1D4ED8",
+  outreach: "#15803D",
+  children: "#D97706",
+  g12: "#7C3AED",
+};
+
+function weekLabel(w: unknown): string {
+  if (typeof w !== "string" || w.length === 0) return "";
+  return w.length >= 3 ? w.slice(-3) : w;
+}
+
+const KNOWN_CELL_TYPES = new Set(["g12", "care", "children", "outreach"]);
+
+function toMeetingTypeArray(d: unknown): Array<{ type: string; count: number }> {
+  if (Array.isArray(d)) return d as Array<{ type: string; count: number }>;
+  if (d && typeof d === "object") {
+    const obj = d as Record<string, unknown>;
+    if (obj.breakdown && typeof obj.breakdown === "object") {
+      return toMeetingTypeArray(obj.breakdown);
+    }
+    const entries = Object.entries(obj).filter(([k]) => KNOWN_CELL_TYPES.has(k));
+    if (entries.length === 0) return [];
+    return entries.map(([type, count]) => ({
+      type,
+      count: typeof count === "number" ? count : Number(count) || 0,
+    }));
+  }
+  return [];
+}
 
 export default function LeaderDashboardPage() {
   const router = useRouter();
-  const user = useAppSelector((s) => s.session.user);
-  const isG12 = user?.roles?.includes("g12") ?? false;
-  const isAdmin = (user?.roles?.includes("admin") || user?.roles?.includes("super_admin")) ?? false;
+  const { cells: myCells, loading: cellsLoading } = useMyCells();
+  const cellsWeekly = useCellsWeekly({ weeks: 8 });
+  const attendance = useAttendance();
+  const meetingTypes = useMeetingTypes();
+  // Fallback aggregates derived from real cell reports — used when the
+  // backend's /analytics/* endpoints return empty.
+  const aggregates = useReportAggregates(myCells, { weeks: 8 });
 
-  const myCells = useMemo(() => {
-    if (!user) return [];
-    return isG12 || isAdmin ? listCells() : listCellsForLeader(user.uid);
-  }, [user, isG12, isAdmin]);
+  const totalMembers = useMemo(
+    () => (Array.isArray(myCells) ? myCells : []).reduce((s, c) => s + (c.memberCount ?? 0), 0),
+    [myCells],
+  );
 
-  const reports = useMemo(() => {
-    return myCells.flatMap((c) => listCellReports({ cellId: c.id, voided: false }));
-  }, [myCells]);
+  // Total reports filed across the leader's cells. `cell.reportCount` is the
+  // authoritative source from /cells/mine; the analytics endpoint is used as
+  // a fallback if cells haven't loaded yet.
+  const totalReports = useMemo(() => {
+    const fromCells = (Array.isArray(myCells) ? myCells : []).reduce((s, c) => s + (c.reportCount ?? 0), 0);
+    if (fromCells > 0) return fromCells;
+    return (Array.isArray(cellsWeekly.data) ? cellsWeekly.data : []).reduce((s, p) => s + (p?.reports ?? 0), 0);
+  }, [myCells, cellsWeekly.data]);
 
-  const totalMembers = useMemo(() => myCells.reduce((sum, c) => sum + c.members.length, 0), [myCells]);
-  const avgAttendance = useMemo(() => {
-    const att = reports
-      .filter((r) => r.didMeet && r.attendance.length > 0)
-      .map((r) => r.attendance.filter((a) => a.status === "present").length / r.attendance.length);
-    if (att.length === 0) return 0;
-    return Math.round((att.reduce((s, v) => s + v, 0) / att.length) * 100);
-  }, [reports]);
-
+  // Prefer backend analytics when populated; fall back to client-side
+  // aggregates computed from real cell reports — both when empty AND when the
+  // API returns zero-only data (backend shipping shape before aggregation).
   const weeklyBars = useMemo(() => {
-    // Build last 8 mock weeks of attendance counts
-    const counts = [38, 42, 40, 46, 44, 51, 48, 53];
-    return counts.map((v, i) => ({ label: `W${i + 1}`, value: v }));
-  }, []);
+    const fromApi = Array.isArray(attendance.data) ? attendance.data : [];
+    const apiTotal = fromApi.reduce((s, x) => s + (x?.present ?? 0) + (x?.absent ?? 0), 0);
+    const source = apiTotal > 0 ? fromApi : aggregates.weekly;
+    return source.slice(-8).map((p) => ({ label: weekLabel(p?.week), value: p?.present ?? 0 }));
+  }, [attendance.data, aggregates.weekly]);
 
   const typeSlices = useMemo(() => {
-    const colors: Record<string, string> = {
-      care: "#1D4ED8",
-      outreach: "#15803D",
-      children: "#D97706",
-      g12: "#7C3AED",
-    };
-    const counts: Record<string, number> = {};
-    for (const c of myCells) counts[c.type] = (counts[c.type] || 0) + 1;
-    return Object.entries(counts).map(([k, v]) => ({ label: k, value: v, color: colors[k] || "#999" }));
-  }, [myCells]);
+    const fromApi = toMeetingTypeArray(meetingTypes.data);
+    const apiTotal = fromApi.reduce((s, x) => s + (x.count ?? 0), 0);
+    const source = apiTotal > 0 ? fromApi : aggregates.meetingTypes;
+    return source.map((s) => ({
+      label: s?.type ?? "unknown",
+      value: s?.count ?? 0,
+      color: TYPE_COLORS[s?.type ?? ""] ?? "#999",
+    }));
+  }, [meetingTypes.data, aggregates.meetingTypes]);
 
   return (
     <div className="page">
@@ -68,23 +107,22 @@ export default function LeaderDashboardPage() {
             Cells you lead at a glance. Filed reports, attendance, and meeting types.
           </p>
         </div>
-        <Button variant="secondary-light" icon="calendar">This month</Button>
       </header>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 20 }}>
-        <KpiMini label="My cells" value={myCells.length} delta={{ direction: "up", value: "+1" }} sub="Active cells" />
-        <KpiMini label="Total members" value={totalMembers} delta={{ direction: "up", value: "+4" }} sub="Across cells" />
-        <KpiMini label="Reports filed" value={reports.length} delta={{ direction: "up", value: "+3" }} sub="Last 30 days" />
-        <KpiMini label="Avg attendance" value={`${avgAttendance}%`} delta={{ direction: avgAttendance >= 70 ? "up" : "dn", value: avgAttendance >= 70 ? "+2%" : "-1%" }} sub="vs. last month" />
+        <KpiMini label="My cells" value={cellsLoading ? "…" : myCells.length} sub="Active cells" />
+        <KpiMini label="Total members" value={cellsLoading ? "…" : totalMembers} sub="Across cells" />
+        <KpiMini label="Reports filed" value={cellsLoading ? "…" : totalReports} sub="Across your cells" />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, marginBottom: 20 }}>
         <ChartCard
           title="Weekly attendance"
           sub="Members present across all cells over the last 8 weeks"
-          right={<Button size="sm" variant="ghost" icon="download">CSV</Button>}
         >
-          <WeeklyAttendanceBars bars={weeklyBars} />
+          {(attendance.loading || aggregates.loading) && weeklyBars.length === 0 ? <EmptyChart message="Loading…" /> :
+            weeklyBars.length === 0 ? <EmptyChart /> :
+            <WeeklyAttendanceBars bars={weeklyBars} highlightIndex={weeklyBars.length - 1} />}
         </ChartCard>
 
         <ChartCard
@@ -92,9 +130,11 @@ export default function LeaderDashboardPage() {
           sub="Distribution of your cells"
           legend={typeSlices.map((s) => ({ label: s.label, color: s.color }))}
         >
-          <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
-            <MeetingTypeDonut slices={typeSlices} size={180} />
-          </div>
+          {(meetingTypes.loading || aggregates.loading) && typeSlices.length === 0 ? <EmptyChart message="Loading…" /> :
+            typeSlices.length === 0 ? <EmptyChart /> :
+            <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
+              <MeetingTypeDonut slices={typeSlices} size={180} />
+            </div>}
         </ChartCard>
       </div>
 

@@ -39,26 +39,53 @@ function parseList(res: unknown): Cell[] {
  * Server auto-applies scope: Member/Student → active cells;
  * Leader → cells they lead; G12 → network; Admin → all.
  */
-export function useCells(params?: { search?: string; type?: CellType | "all"; state?: CellState }) {
-  const dispatch = useAppDispatch();
+interface UseCellsParams {
+  search?: string;
+  type?: CellType | "all";
+  state?: CellState;
+  /** Filter by physical area (per spec). */
+  area?: string;
+  /** Filter by leader UID (per spec). */
+  leaderUid?: string;
+}
+
+/**
+ * GET /cells with server-side filtering per the V2 spec.
+ * Paginates internally via `cursor` and stops at 10 pages × 100 items.
+ *
+ * Spec params:  type | state | area | leaderUid | search | limit | cursor
+ */
+export function useCells(params?: UseCellsParams) {
   const [cells, setCells] = useState<Cell[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchCells = useCallback(async () => {
     setLoading(true);
     try {
-      const qs = new URLSearchParams({ limit: "100" });
-      if (params?.state)          qs.set("state", params.state);
-      if (params?.type && params.type !== "all") qs.set("type", params.type);
-      if (params?.search?.trim()) qs.set("search", params.search.trim());
-      const res = await apiRequest<unknown>(`/cells?${qs}`);
-      setCells(parseList(res));
+      const collected: Cell[] = [];
+      let cursor: string | undefined;
+      for (let i = 0; i < 10; i++) {
+        const qs = new URLSearchParams({ limit: "100" });
+        if (params?.state)          qs.set("state", params.state);
+        if (params?.type && params.type !== "all") qs.set("type", params.type);
+        if (params?.area?.trim())   qs.set("area", params.area.trim());
+        if (params?.leaderUid)      qs.set("leaderUid", params.leaderUid);
+        if (params?.search?.trim()) qs.set("search", params.search.trim());
+        if (cursor)                 qs.set("cursor", cursor);
+        const res = await apiRequest<unknown>(`/cells?${qs}`);
+        collected.push(...parseList(res));
+        const next = (res as { nextCursor?: string | null })?.nextCursor;
+        if (!next) break;
+        cursor = next;
+      }
+      setCells(collected);
     } catch {
       setCells([]);
     } finally {
       setLoading(false);
     }
-  }, [params?.search, params?.type, params?.state]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params?.search, params?.type, params?.state, params?.area, params?.leaderUid]);
 
   useEffect(() => { fetchCells(); }, [fetchCells]);
 

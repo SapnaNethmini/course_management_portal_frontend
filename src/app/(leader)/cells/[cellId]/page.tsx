@@ -10,7 +10,9 @@ import { CellDetailHeader } from "@/components/cells/CellDetailHeader";
 import { CellTabs } from "@/components/cells/CellTabs";
 import { CellMembersPanel } from "@/components/cells/CellMembersPanel";
 import { CellReportCard } from "@/components/cells/CellReportCard";
-import { useCell } from "@/application/hooks/useCell";
+import { AddMemberDialog } from "@/components/cells/AddMemberDialog";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { useCell, useCellMembers } from "@/application/hooks/useCell";
 import { useCellReports } from "@/application/hooks/useCellReports";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
 
@@ -18,13 +20,27 @@ export default function LeaderCellDetailPage() {
   const router = useRouter();
   const params = useParams();
   const cellId = (params?.cellId as string) ?? "";
-  const { cell, loading: cellLoading, error: cellError } = useCell(cellId || undefined);
+  const { cell, loading: cellLoading, error: cellError, refetch } = useCell(cellId || undefined);
   const { reports, loading: reportsLoading } = useCellReports(cellId || undefined);
+  const { busy: memberBusy, addMembers, removeMember } = useCellMembers(cellId || undefined);
 
   const user = useAppSelector((s) => s.session.user);
   const canFile = (user?.roles?.includes("leader") || user?.roles?.includes("g12") || user?.roles?.includes("super_admin")) ?? false;
 
   const [tab, setTab] = useState<"members" | "reports">("members");
+  const [addOpen, setAddOpen] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<{ uid: string; name: string } | null>(null);
+
+  const handleAddMembers = async (uids: string[]) => {
+    const res = await addMembers(uids);
+    if (res) { setAddOpen(false); refetch(); }
+  };
+
+  const handleRemoveMember = async () => {
+    if (!removeTarget) return;
+    const ok = await removeMember(removeTarget.uid);
+    if (ok) { setRemoveTarget(null); refetch(); }
+  };
 
   if (cellLoading) {
     return <div className="page" style={{ textAlign: "center", padding: 48, color: "var(--color-muted)" }}><Icon name="loader" size={24} /></div>;
@@ -76,11 +92,40 @@ export default function LeaderCellDetailPage() {
 
       {tab === "members" && (
         <CellMembersPanel
-          members={(cell.members ?? []).map((m) => ({ uid: m.uid ?? m, displayName: m.displayName ?? String(m) }))}
+          members={(cell.members ?? []).map((m) => ({
+            uid: typeof m === "string" ? m : (m.uid ?? ""),
+            displayName: typeof m === "string" ? m : (m.displayName || m.uid || ""),
+            roles: typeof m === "string" ? [] : ((m as { roles?: string[] }).roles ?? []),
+          }))}
           leaderUid={cell.leaderUid}
           canEdit={canFile}
+          busy={memberBusy}
+          onAddClick={() => setAddOpen(true)}
+          onRemove={(uid) => {
+            const m = (cell.members ?? []).find((x) => (typeof x === "string" ? x : x.uid) === uid);
+            const name = typeof m === "string" ? m : (m?.displayName || m?.uid || uid);
+            setRemoveTarget({ uid, name });
+          }}
         />
       )}
+
+      <AddMemberDialog
+        open={addOpen}
+        existingUids={(cell.members ?? []).map((m) => (typeof m === "string" ? m : (m.uid ?? "")))}
+        busy={memberBusy}
+        onCancel={() => setAddOpen(false)}
+        onConfirm={handleAddMembers}
+      />
+
+      <ConfirmDialog
+        open={!!removeTarget}
+        title={`Remove ${removeTarget?.name ?? ""}?`}
+        message="They will lose access to this cell's reports and stop appearing in attendance lists."
+        confirmLabel="Yes, remove"
+        destructive
+        onConfirm={handleRemoveMember}
+        onCancel={() => setRemoveTarget(null)}
+      />
 
       {tab === "reports" && (
         <div>

@@ -19,6 +19,7 @@ const API_PREFIX = process.env.NEXT_PUBLIC_API_PREFIX ?? "/api/v1";
 interface ProfileUpdate {
   firstName?: string;
   lastName?: string;
+  phone?: string;
   preferredLanguage?: "si" | "ta" | "en";
   profilePhotoUrl?: string | null;
 }

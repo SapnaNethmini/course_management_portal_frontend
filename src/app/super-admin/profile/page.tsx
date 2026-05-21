@@ -1,5 +1,1 @@
-import { redirect } from "next/navigation";
-
-export default function SuperAdminProfileRedirect() {
-  redirect("/profile");
-}
+export { default } from "@/app/(authed)/profile/page";

@@ -265,10 +265,18 @@ export default function StudentCourseViewerPage() {
     }
   };
 
-  // Next button: requires current lesson to be complete first (gate).
+  // Next button: requires current lesson to be complete first.
+  // If not complete yet, surface a toast instead of silently doing nothing.
   const handleNext = () => {
     if (!nextLesson) return;
-    if (!active || !completedLessons.has(active.lesson.id)) return;
+    if (!active || !completedLessons.has(active.lesson.id)) {
+      dispatch(pushToast({
+        tone: "warning",
+        title: "Finish this lesson first",
+        message: "Watch the video to the end or click Mark Complete before moving on.",
+      }));
+      return;
+    }
     setActiveLessonId(nextLesson.lesson.id);
   };
 
@@ -728,7 +736,7 @@ export default function StudentCourseViewerPage() {
           <Button
             variant="secondary"
             iconAfter="arrow-right"
-            disabled={!nextLesson || !activeLessonDone}
+            disabled={!nextLesson}
             onClick={handleNext}
           >
             Next lesson

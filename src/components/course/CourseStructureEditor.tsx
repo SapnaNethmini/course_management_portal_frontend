@@ -8,11 +8,9 @@ import { useSavedBadge, SavedBadge } from "@/components/ui/SavedBadge";
 import { Input } from "@/components/ui/Input";
 import { useAppDispatch } from "@/application/hooks/useAppDispatch";
 import { pushToast } from "@/application/slices/uiSlice";
-import { apiRequest, ApiRequestError } from "@/infrastructure/api/request";
+import { API_PREFIX, apiRequest, ApiRequestError } from "@/infrastructure/api/request";
 import { getIdToken } from "@/infrastructure/firebase/getToken";
 import type { Semester, Subject } from "@/application/hooks/useCourses";
-
-const API_PREFIX = process.env.NEXT_PUBLIC_API_PREFIX ?? "/api/v1";
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 
@@ -290,7 +288,6 @@ export function CourseStructureEditor({ courseId, initialSemesters, onStructureC
     try {
       const { tokenService } = await import("@/infrastructure/firebase/tokenService");
       const token = await tokenService.get();
-      const API_PREFIX = process.env.NEXT_PUBLIC_API_PREFIX ?? "/api/v1";
       const form = new FormData();
       form.append("file", file);
       const res = await fetch(`${API_PREFIX}/subjects/${selectedSubjectId}/images`, {

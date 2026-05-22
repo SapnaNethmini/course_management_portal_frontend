@@ -11,6 +11,7 @@ import { useAppSelector } from "@/application/hooks/useAppSelector";
 import { pushToast } from "@/application/slices/uiSlice";
 import { useCourse } from "@/application/hooks/useCourses";
 import { apiRequest, ApiRequestError } from "@/infrastructure/api/request";
+import { uploadCourseCover } from "@/infrastructure/api/uploadCourseCover";
 import type { CourseSummary } from "@/application/hooks/useCourses";
 import { CourseStructureEditor } from "@/components/course/CourseStructureEditor";
 import { BatchesSection } from "@/components/course/BatchesSection";
@@ -174,20 +175,24 @@ export default function EditCoursePage() {
       return;
     }
     setUploadingCover(true);
+    // Instant preview while the real upload is in flight.
+    const previewUrl = URL.createObjectURL(file);
+    setCoverImageUrl(previewUrl);
     try {
-      // Preview immediately
-      const previewUrl = URL.createObjectURL(file);
-      setCoverImageUrl(previewUrl);
-      // Save URL to course via PATCH
-      const updated = await apiRequest<CourseSummary>(`/courses/${course.id}`, {
-        method: "PATCH",
-        body: { coverImageUrl: previewUrl },
-      });
-      setCoverImageUrl(updated.coverImageUrl ?? previewUrl);
+      // Multipart upload to permanent storage — mirrors /me/avatar pattern.
+      const permanentUrl = await uploadCourseCover(course.id, file);
+      setCoverImageUrl(permanentUrl);
       dispatch(pushToast({ tone: "success", title: "Cover image updated" }));
-    } catch {
-      dispatch(pushToast({ tone: "warning", title: "Couldn't update cover image" }));
+    } catch (err) {
+      // Roll preview back to whatever was actually persisted on the course.
+      setCoverImageUrl(course.coverImageUrl ?? null);
+      dispatch(pushToast({
+        tone: "warning",
+        title: "Couldn't update cover image",
+        message: err instanceof Error ? err.message : undefined,
+      }));
     } finally {
+      URL.revokeObjectURL(previewUrl);
       setUploadingCover(false);
       if (coverImageRef.current) coverImageRef.current.value = "";
     }

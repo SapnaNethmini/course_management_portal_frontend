@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Input";
 import { useAppDispatch } from "@/application/hooks/useAppDispatch";
 import { pushToast } from "@/application/slices/uiSlice";
 import { apiRequest, ApiRequestError } from "@/infrastructure/api/request";
+import { uploadCourseCover } from "@/infrastructure/api/uploadCourseCover";
 import type { CourseSummary } from "@/application/hooks/useCourses";
 import { useCourse } from "@/application/hooks/useCourses";
 import { BatchesSection } from "@/components/course/BatchesSection";
@@ -54,18 +55,21 @@ export default function NewCoursePage() {
       return;
     }
     setUploadingCover(true);
+    const previewUrl = URL.createObjectURL(file);
+    setCoverImageUrl(previewUrl);
     try {
-      const previewUrl = URL.createObjectURL(file);
-      setCoverImageUrl(previewUrl);
-      const updated = await apiRequest<CourseSummary>(`/courses/${createdCourseId}`, {
-        method: "PATCH",
-        body: { coverImageUrl: previewUrl },
-      });
-      setCoverImageUrl(updated.coverImageUrl ?? previewUrl);
+      const permanentUrl = await uploadCourseCover(createdCourseId, file);
+      setCoverImageUrl(permanentUrl);
       dispatch(pushToast({ tone: "success", title: "Cover image updated" }));
-    } catch {
-      dispatch(pushToast({ tone: "warning", title: "Couldn't update cover image" }));
+    } catch (err) {
+      setCoverImageUrl(course?.coverImageUrl ?? null);
+      dispatch(pushToast({
+        tone: "warning",
+        title: "Couldn't update cover image",
+        message: err instanceof Error ? err.message : undefined,
+      }));
     } finally {
+      URL.revokeObjectURL(previewUrl);
       setUploadingCover(false);
       if (coverImageRef.current) coverImageRef.current.value = "";
     }

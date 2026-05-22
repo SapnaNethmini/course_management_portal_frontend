@@ -11,10 +11,8 @@ import { useAppSelector } from "./useAppSelector";
 import { pushToast } from "@/application/slices/uiSlice";
 import { setLocale } from "@/application/slices/localeSlice";
 import { setUser, type SessionUser } from "@/application/slices/sessionSlice";
-import { apiRequest, ApiRequestError } from "@/infrastructure/api/request";
+import { API_PREFIX, apiRequest, ApiRequestError } from "@/infrastructure/api/request";
 import { auth } from "@/infrastructure/firebase/auth";
-
-const API_PREFIX = process.env.NEXT_PUBLIC_API_PREFIX ?? "/api/v1";
 
 interface ProfileUpdate {
   firstName?: string;

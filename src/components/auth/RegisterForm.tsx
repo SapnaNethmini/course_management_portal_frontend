@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/Input";
 import { useAppDispatch } from "@/application/hooks/useAppDispatch";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
 import { pushToast } from "@/application/slices/uiSlice";
+import { API_PREFIX } from "@/infrastructure/api/request";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 
 export function RegisterForm() {
@@ -55,7 +56,7 @@ export function RegisterForm() {
     setLoading(true);
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_PREFIX}/auth/register`,
+        `${API_PREFIX}/auth/register`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

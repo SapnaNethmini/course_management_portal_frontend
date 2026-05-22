@@ -75,7 +75,11 @@ function getInitials(title: string): string {
 }
 
 export function CourseCover({ imageUrl, title, tag, alt }: CourseCoverProps) {
-  if (imageUrl) {
+  // Treat `blob:` URLs as missing — those are browser-session-only references
+  // left over from an earlier broken upload flow that never POSTed to storage.
+  // They always 404 in any subsequent session, so fall through to the gradient.
+  const usable = imageUrl && !imageUrl.startsWith("blob:");
+  if (usable) {
     return (
       <div className="cover">
         <img

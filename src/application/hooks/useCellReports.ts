@@ -3,10 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAppDispatch } from "./useAppDispatch";
 import { pushToast } from "@/application/slices/uiSlice";
-import { apiRequest, ApiRequestError } from "@/infrastructure/api/request";
+import { API_PREFIX, apiRequest, ApiRequestError } from "@/infrastructure/api/request";
 import { tokenService } from "@/infrastructure/firebase/tokenService";
-
-const API_PREFIX = process.env.NEXT_PUBLIC_API_PREFIX ?? "/api/v1";
 
 export interface AttendanceEntry {
   userUid?: string;

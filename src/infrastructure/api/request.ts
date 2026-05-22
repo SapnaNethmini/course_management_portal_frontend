@@ -12,7 +12,7 @@ import { tokenService } from "@/infrastructure/firebase/tokenService";
 //      the next.config.mjs rewrite).
 //   3. Hard-coded fallback       — last resort if env vars are missing or
 //      misconfigured at deploy time. Update if the backend domain changes.
-const API_PREFIX =
+export const API_PREFIX =
   process.env.NEXT_PUBLIC_API_BASE_URL
   ?? process.env.NEXT_PUBLIC_API_PREFIX
   ?? "https://cms.api.bethelnet.au/api/v1";

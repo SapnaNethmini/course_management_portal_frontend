@@ -73,11 +73,17 @@ export function FederatedSignInButtons({ context = "signin", disabled }: Props) 
 
       let message = "Something went wrong. Please use email + password instead.";
       if (code === "auth/operation-not-allowed") {
-        message = `${label} sign-in is not enabled in Firebase console yet. Go to Firebase → Authentication → Sign-in method → enable Google.`;
+        message = `${label} sign-in is not enabled in Firebase Console. Enable it under Authentication → Sign-in method → ${label}.`;
       } else if (code === "auth/account-exists-with-different-credential") {
         message = "An account with this email uses a different sign-in method. Sign in that way first.";
       } else if (code === "auth/network-request-failed") {
         message = "Network error. Check your connection and try again.";
+      } else if (code === "auth/popup-blocked") {
+        message = "Your browser blocked the sign-in popup. Allow popups for this site and try again.";
+      } else if (code === "auth/unauthorized-domain") {
+        message = "This domain isn't authorized for sign-in. Add it under Firebase → Authentication → Settings → Authorized domains.";
+      } else if (code === "auth/invalid-credential" && provider === "apple") {
+        message = "Apple rejected the sign-in. The Services ID, Team ID, Key ID, or private key in Firebase Console may not match the Apple Developer registration.";
       }
 
       dispatch(

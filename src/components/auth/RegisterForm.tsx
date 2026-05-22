@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/Input";
 import { useAppDispatch } from "@/application/hooks/useAppDispatch";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
 import { pushToast } from "@/application/slices/uiSlice";
-import { FederatedSignInButtons } from "./FederatedSignInButtons";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 
 export function RegisterForm() {
@@ -106,8 +105,6 @@ export function RegisterForm() {
         </div>
         <LanguageSwitcher />
       </div>
-
-      <FederatedSignInButtons context="signup" disabled={loading} />
 
       <form onSubmit={onSubmit}>
         <div className="form-grid two" style={{ marginBottom: 0 }}>

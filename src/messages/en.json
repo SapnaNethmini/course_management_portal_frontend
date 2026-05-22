@@ -91,6 +91,8 @@
       "emailExists": "An account with this email already exists.",
       "password": "Password",
       "passwordPlaceholder": "At least 10 characters",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password",
       "passwordRequired": "Password is required.",
       "passwordTooShort": "Password must be at least 10 characters.",
       "passwordHint": "Mix uppercase, lowercase, numbers and symbols.",

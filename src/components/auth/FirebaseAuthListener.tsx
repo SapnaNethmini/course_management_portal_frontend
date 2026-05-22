@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { onIdTokenChanged } from "firebase/auth";
 import { auth } from "@/infrastructure/firebase/auth";
 import { apiRequest, ApiRequestError } from "@/infrastructure/api/request";
 import { useAppDispatch } from "@/application/hooks/useAppDispatch";
+import { store } from "@/application/store";
 import {
   setUser,
   setAuthResolving,
   clearSession,
+  DASHBOARD_BY_ROLE,
   type SessionUser,
 } from "@/application/slices/sessionSlice";
 import { tokenService } from "@/infrastructure/firebase/tokenService";
@@ -56,6 +59,7 @@ async function registerFcmToken() {
  */
 export function FirebaseAuthListener({ children }: { children: React.ReactNode }) {
   const dispatch = useAppDispatch();
+  const router = useRouter();
 
   useEffect(() => {
     let firstEvent = true;
@@ -119,6 +123,20 @@ export function FirebaseAuthListener({ children }: { children: React.ReactNode }
         }
 
         dispatch(setUser(me));
+
+        // Redirect to role-appropriate dashboard ONLY when the user is sitting
+        // on an auth landing page. This catches federated sign-in (Google /
+        // Apple via signInWithPopup), where there's no onSubmit handler to do
+        // the routing. We don't redirect from other paths because token
+        // refreshes also fire this listener — we shouldn't kick mid-session
+        // users away from the page they were on.
+        if (typeof window !== "undefined") {
+          const path = window.location.pathname;
+          if (path === "/login" || path === "/register" || path === "/") {
+            const activeRole = store.getState().session.activeRole ?? "member";
+            router.push(DASHBOARD_BY_ROLE[activeRole]);
+          }
+        }
 
         // Register FCM push token after every successful sign-in.
         // Best-effort — never blocks the login flow.

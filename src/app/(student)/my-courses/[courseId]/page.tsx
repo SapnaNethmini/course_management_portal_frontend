@@ -265,11 +265,19 @@ export default function StudentCourseViewerPage() {
     }
   };
 
-  // Next button: auto-mark current as complete, then advance.
+  // Next button: requires current lesson to be complete first (gate).
   const handleNext = () => {
     if (!nextLesson) return;
-    markCurrentLessonComplete();
+    if (!active || !completedLessons.has(active.lesson.id)) return;
     setActiveLessonId(nextLesson.lesson.id);
+  };
+
+  // Auto-advance when the video plays through to the end. The 90% threshold in
+  // handleVideoTime has already (idempotently) marked the lesson complete.
+  const handleVideoEnded = () => {
+    if (!active) return;
+    markCurrentLessonComplete();
+    if (nextLesson) setActiveLessonId(nextLesson.lesson.id);
   };
 
   /* ── Progress percentage (lesson-based) ──────────────────────────── */
@@ -634,6 +642,7 @@ export default function StudentCourseViewerPage() {
             videoId={youtubeId}
             title={activeTitle}
             onProgress={handleVideoTime}
+            onEnded={handleVideoEnded}
           />
         ) : embedUrl ? (
           <div className="player" style={{ padding: 0, background: "#000", position: "relative", paddingBottom: "56.25%", height: 0, overflow: "hidden" }}>
@@ -705,15 +714,21 @@ export default function StudentCourseViewerPage() {
           </Button>
           <Button
             icon={activeLessonDone ? "check-circle" : "check"}
-            disabled={!activeLesson || activeLessonDone}
-            onClick={handleMarkComplete}
+            disabled={!activeLesson || (activeLessonDone && !nextLesson)}
+            onClick={() => {
+              if (activeLessonDone) {
+                if (nextLesson) setActiveLessonId(nextLesson.lesson.id);
+              } else {
+                handleMarkComplete();
+              }
+            }}
           >
             {activeLessonDone ? "Completed" : "Mark Complete"}
           </Button>
           <Button
             variant="secondary"
             iconAfter="arrow-right"
-            disabled={!nextLesson}
+            disabled={!nextLesson || !activeLessonDone}
             onClick={handleNext}
           >
             Next lesson

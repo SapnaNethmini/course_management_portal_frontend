@@ -67,14 +67,18 @@ interface YouTubePlayerProps {
    * Use this to trigger auto-complete at 90% etc.
    */
   onProgress?: (currentTime: number, duration: number) => void;
+  /** Fires once when the video plays through to the end. */
+  onEnded?: () => void;
 }
 
-export function YouTubePlayer({ videoId, title, onProgress }: YouTubePlayerProps) {
+export function YouTubePlayer({ videoId, title, onProgress, onEnded }: YouTubePlayerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const pollRef = useRef<number | null>(null);
   const onProgressRef = useRef(onProgress);
   onProgressRef.current = onProgress;
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
 
   useEffect(() => {
     let cancelled = false;
@@ -93,8 +97,10 @@ export function YouTubePlayer({ videoId, title, onProgress }: YouTubePlayerProps
         events: {
           onStateChange: (event) => {
             const PLAYING = window.YT?.PlayerState.PLAYING;
+            const ENDED = window.YT?.PlayerState.ENDED;
             if (event.data === PLAYING) startPolling();
             else stopPolling();
+            if (event.data === ENDED) onEndedRef.current?.();
           },
         },
       });

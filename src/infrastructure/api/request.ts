@@ -2,7 +2,20 @@ import { signOut } from "firebase/auth";
 import { auth } from "@/infrastructure/firebase/auth";
 import { tokenService } from "@/infrastructure/firebase/tokenService";
 
-const API_PREFIX = process.env.NEXT_PUBLIC_API_PREFIX ?? "/api/v1";
+// API origin resolution. Priority:
+//   1. NEXT_PUBLIC_API_BASE_URL  — absolute backend URL (cross-origin fetch).
+//      Preferred because it works regardless of how the frontend is hosted
+//      (no dependency on Next.js rewrites or nginx routing at the frontend
+//      origin). Requires backend CORS allowlist to include the frontend.
+//   2. NEXT_PUBLIC_API_PREFIX    — relative path (only works if the same
+//      origin proxies /api/v1/* to the backend, e.g. local Next.js dev with
+//      the next.config.mjs rewrite).
+//   3. Hard-coded fallback       — last resort if env vars are missing or
+//      misconfigured at deploy time. Update if the backend domain changes.
+const API_PREFIX =
+  process.env.NEXT_PUBLIC_API_BASE_URL
+  ?? process.env.NEXT_PUBLIC_API_PREFIX
+  ?? "https://cms.api.bethelnet.au/api/v1";
 const LOCALE_STORAGE_KEY = "edupath.locale";
 const SUPPORTED_LOCALES = new Set(["en", "si", "ta"]);
 

@@ -102,50 +102,43 @@ export default function StudentCourseViewerPage() {
   // in this session (idempotent on backend but avoids duplicate toasts).
   const autoCompletedSubjects = useRef<Set<string>>(new Set());
 
-  // localStorage key for per-course / per-user lesson completion.
-  const progressKey = sessionUser && params.courseId
-    ? `edupath.lessons.${sessionUser.uid}.${params.courseId}`
-    : null;
+  /* ── Effective completed-subjects set ─────────────────────────────
+   * Backend always returns `completedCount` (e.g. 3) but doesn't always
+   * return `completedSubjectIds`. When IDs are missing, the tree can't
+   * unlock or tick anything correctly. As a fallback, assume sequential
+   * completion: treat the first `completedCount` subjects in semester/
+   * subject order as complete. When IDs ARE returned, we use them
+   * verbatim. Drives: tree locking, subject ticks, lesson backfill,
+   * initial active-lesson selection. */
+  const effectiveCompletedSubjects = useMemo(() => {
+    const set = new Set(completedSubjectsApi);
+    const target = progress?.completedCount ?? 0;
+    if (target > set.size && course?.semesters) {
+      const ordered: string[] = [];
+      for (const sem of course.semesters.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0))) {
+        for (const sub of (sem.subjects ?? []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0))) {
+          ordered.push(sub.id);
+        }
+      }
+      for (const id of ordered) {
+        if (set.size >= target) break;
+        set.add(id);
+      }
+    }
+    return set;
+  }, [completedSubjectsApi, progress?.completedCount, course?.semesters]);
 
-  // Guard: prevent the save effect from overwriting localStorage before the
-  // restore effect has flushed its state update. Without this, both effects
-  // fire when progressKey first becomes available (sessionUser loads from
-  // redux-persist) and save runs with the still-empty completedLessons set,
-  // erasing the previously saved progress.
-  const [restoredFromStorage, setRestoredFromStorage] = useState(false);
-
-  /* ── Restore + persist lesson-level completion in localStorage ───── */
-
+  /* ── Backfill lesson completion from completed subjects ──────────── */
+  // Mirror lessons inside every effectively-complete subject into the local
+  // completedLessons Set so the tree shows ticks correctly after refresh /
+  // logout-login. localStorage is intentionally NOT used — the source of
+  // truth is the backend's count + ID list.
   useEffect(() => {
-    if (!progressKey) return;
-    try {
-      const raw = localStorage.getItem(progressKey);
-      if (raw) setCompletedLessons(new Set(JSON.parse(raw) as string[]));
-    } catch { /* ignore */ }
-    setRestoredFromStorage(true);
-  }, [progressKey]);
-
-  useEffect(() => {
-    // Only save after we've finished restoring so we don't overwrite saved data.
-    if (!progressKey || !restoredFromStorage) return;
-    try {
-      localStorage.setItem(progressKey, JSON.stringify([...completedLessons]));
-    } catch { /* ignore */ }
-  }, [progressKey, completedLessons, restoredFromStorage]);
-
-  /* ── Backfill lesson completion from backend subject completion ──── */
-  // When a subject is marked complete on the backend, every lesson in it
-  // must have been done — that's the only way the UI completes a subject.
-  // Reflecting that into local state means the progress bar + lesson ticks
-  // restore correctly after sign-in on a fresh browser / device where
-  // localStorage is empty. Without this the user sees 0% even though they
-  // finished entire subjects.
-  useEffect(() => {
-    if (completedSubjectsApi.size === 0) return;
+    if (effectiveCompletedSubjects.size === 0) return;
     setCompletedLessons((prev) => {
       let changed = false;
       const next = new Set(prev);
-      for (const subjectId of completedSubjectsApi) {
+      for (const subjectId of effectiveCompletedSubjects) {
         for (const l of lessonsBySubject[subjectId] ?? []) {
           if (!next.has(l.id)) {
             next.add(l.id);
@@ -155,7 +148,7 @@ export default function StudentCourseViewerPage() {
       }
       return changed ? next : prev;
     });
-  }, [completedSubjectsApi, lessonsBySubject]);
+  }, [effectiveCompletedSubjects, lessonsBySubject]);
 
   /* ── Fetch lessons for every subject in parallel (one call per subject) ── */
 
@@ -221,15 +214,21 @@ export default function StudentCourseViewerPage() {
   const prevLesson = activeIndex > 0 ? flatLessons[activeIndex - 1] : null;
   const nextLesson = activeIndex >= 0 && activeIndex < flatLessons.length - 1 ? flatLessons[activeIndex + 1] : null;
 
-  // Auto-select first lesson (or last accessed subject's first lesson) on load.
+  // Auto-select the resume lesson on load. Priority:
+  //   1. backend's lastAccessedSubjectId
+  //   2. first lesson of the first NOT-yet-complete subject (so a student
+  //      who finished 3 subjects lands on subject 4's lesson, not subject 1)
+  //   3. flatLessons[0]
   useEffect(() => {
     if (activeLessonId || flatLessons.length === 0) return;
     const lastSubjectId = progress?.lastAccessedSubjectId;
-    const candidate = lastSubjectId
-      ? flatLessons.find((f) => f.subjectId === lastSubjectId)
-      : flatLessons[0];
-    setActiveLessonId((candidate ?? flatLessons[0]).lesson.id);
-  }, [flatLessons, activeLessonId, progress?.lastAccessedSubjectId]);
+    if (lastSubjectId) {
+      const cand = flatLessons.find((f) => f.subjectId === lastSubjectId);
+      if (cand) { setActiveLessonId(cand.lesson.id); return; }
+    }
+    const firstIncomplete = flatLessons.find((f) => !effectiveCompletedSubjects.has(f.subjectId));
+    setActiveLessonId((firstIncomplete ?? flatLessons[0]).lesson.id);
+  }, [flatLessons, activeLessonId, progress?.lastAccessedSubjectId, effectiveCompletedSubjects]);
 
   // Track access whenever active subject changes (background, fire & forget).
   useEffect(() => {
@@ -250,12 +249,14 @@ export default function StudentCourseViewerPage() {
       if (subjectLessons.length === 0) return;
       const allDone = subjectLessons.every((l) => completedLessons.has(l.id));
       if (!allDone) return;
-      if (completedSubjectsApi.has(subjectId)) return;
+      // Skip if we already know this subject is complete (backend IDs OR
+      // fallback inference from completedCount).
+      if (effectiveCompletedSubjects.has(subjectId)) return;
       if (autoCompletedSubjects.current.has(subjectId)) return;
       autoCompletedSubjects.current.add(subjectId);
       markSubjectCompleteApi(subjectId, semesterId);
     },
-    [lessonsBySubject, completedLessons, completedSubjectsApi, markSubjectCompleteApi],
+    [lessonsBySubject, completedLessons, effectiveCompletedSubjects, markSubjectCompleteApi],
   );
 
   // Mark current lesson complete (used by both manual click and "Next").
@@ -312,11 +313,27 @@ export default function StudentCourseViewerPage() {
     if (nextLesson) setActiveLessonId(nextLesson.lesson.id);
   };
 
-  /* ── Progress percentage (lesson-based) ──────────────────────────── */
-
+  /* ── Progress percentage ─────────────────────────────────────────── */
+  // Backend is the source of truth: `/me/progress/courses/:id` returns
+  // completionPercent + completedCount + totalSubjects (same data the
+  // dashboard's "Continue Learning" card uses). We display those directly so
+  // both screens stay in sync. If the backend response hasn't arrived yet,
+  // we fall back to a session-level lesson tally so the bar reflects clicks
+  // the student has made in this session.
   const totalLessons = flatLessons.length;
-  const completedLessonsCount = flatLessons.filter((f) => completedLessons.has(f.lesson.id)).length;
-  const pct = totalLessons === 0 ? 0 : Math.round((completedLessonsCount / totalLessons) * 100);
+  const sessionCompletedLessons = flatLessons.filter((f) => completedLessons.has(f.lesson.id)).length;
+  const backendPct = progress?.completionPercent;
+  const pct =
+    backendPct != null
+      ? Math.round(backendPct)
+      : totalLessons === 0 ? 0 : Math.round((sessionCompletedLessons / totalLessons) * 100);
+  const completedCountDisplay = progress?.completedCount ?? sessionCompletedLessons;
+  const totalCountDisplay = progress?.totalSubjects ?? totalLessons;
+  const countUnit = progress != null ? "subjects" : "lessons";
+  // Keep `completedLessonsCount` as an alias the rest of the file already
+  // references in the lesson tree (tick marks etc.) — it's still the
+  // session-level Set count.
+  const completedLessonsCount = sessionCompletedLessons;
 
   /* ── Attachment download ─────────────────────────────────────────── */
 
@@ -442,7 +459,7 @@ export default function StudentCourseViewerPage() {
             <span className="pct">{pct}%</span>
           </div>
           <div style={{ fontFamily: "var(--font-body)", fontSize: 11, color: "var(--color-muted)", marginTop: 4 }}>
-            {completedLessonsCount} of {totalLessons} lessons completed
+            {completedCountDisplay} of {totalCountDisplay} {countUnit} completed
           </div>
         </div>
 
@@ -592,14 +609,14 @@ export default function StudentCourseViewerPage() {
                       .slice()
                       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
                     const firstIncompleteIdx = orderedSubjects.findIndex(
-                      (sub) => !completedSubjectsApi.has(sub.id),
+                      (sub) => !effectiveCompletedSubjects.has(sub.id),
                     );
                     return (
                   <>
                     {orderedSubjects.map((sub, subIdx) => {
                       const subjectLessons = lessonsBySubject[sub.id] ?? [];
                       const allDone =
-                        completedSubjectsApi.has(sub.id) ||
+                        effectiveCompletedSubjects.has(sub.id) ||
                         (subjectLessons.length > 0 && subjectLessons.every((l) => completedLessons.has(l.id)));
                       const hasActive = active?.subjectId === sub.id;
                       const isLockedSubject =

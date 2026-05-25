@@ -173,14 +173,6 @@ export default function BrowseCourseDetailPage() {
             </div>
           )}
 
-          {/* 0% progress bar */}
-          <div className="progress-row">
-            <div className="bar"><i style={{ width: "0%" }} /></div>
-            <span className="pct">0%</span>
-          </div>
-          <div style={{ fontFamily: "var(--font-body)", fontSize: 11, color: "var(--color-muted)", marginTop: 4 }}>
-            0 of {totalLessons} lessons completed
-          </div>
         </div>
 
         {/* Semester tree */}
@@ -343,8 +335,11 @@ export default function BrowseCourseDetailPage() {
                 Submit a request — an admin will approve it within 24 hours. Once approved you&apos;ll get
                 instant access to the first semester&apos;s content.
               </p>
-              {/* All batches — open ones selectable, closed/draft dimmed */}
-              {realBatches.length > 0 && (
+              {/* All batches — open ones selectable, closed/draft dimmed.
+                  When the backend hasn't published any intake yet, show a
+                  notice and still allow the student to submit a request;
+                  admins will assign them to the next intake when it opens. */}
+              {realBatches.length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
                   {realBatches.map((b) => {
                     const isOpen = b.state === "open";
@@ -377,10 +372,29 @@ export default function BrowseCourseDetailPage() {
                     );
                   })}
                 </div>
+              ) : (
+                <div className="pending-callout" style={{ marginBottom: 20 }}>
+                  <div className="ico"><Icon name="info" size={18} /></div>
+                  <div className="b-body">
+                    <b>No intakes available right now.</b> You can still submit your
+                    request — we&apos;ll assign you to the next intake when it opens.
+                  </div>
+                </div>
               )}
-              <Button size="lg" icon="clipboard-list" onClick={handleRequest}
-                disabled={enrolling || !selectedBatch || selectedBatch.state !== "open"}>
-                {enrolling ? "Requesting…" : selectedBatch ? "Request Enrolment" : "Select an intake above"}
+              <Button
+                size="lg"
+                icon="clipboard-list"
+                onClick={handleRequest}
+                disabled={
+                  enrolling ||
+                  (realBatches.length > 0 && (!selectedBatch || selectedBatch.state !== "open"))
+                }
+              >
+                {enrolling
+                  ? "Requesting…"
+                  : realBatches.length === 0 || selectedBatch
+                    ? "Request Enrolment"
+                    : "Select an intake above"}
               </Button>
             </>
           )}

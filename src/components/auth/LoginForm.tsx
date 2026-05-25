@@ -58,20 +58,25 @@ export function LoginForm() {
     setFormError("");
   };
 
+  // Field-level validators so we can run them onBlur AND on submit without
+  // duplicating logic.
+  const validateEmail = (value: string): string => {
+    if (!value.trim()) return "Email is required.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return "Enter a valid email address.";
+    return "";
+  };
+
+  const validatePassword = (value: string): string => {
+    if (!value) return "Password is required.";
+    return "";
+  };
+
   const validate = () => {
-    let valid = true;
-    if (!email.trim()) {
-      setEmailError("Email is required.");
-      valid = false;
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setEmailError("Enter a valid email address.");
-      valid = false;
-    }
-    if (!pw) {
-      setPwError("Password is required.");
-      valid = false;
-    }
-    return valid;
+    const emailMsg = validateEmail(email);
+    const pwMsg = validatePassword(pw);
+    setEmailError(emailMsg);
+    setPwError(pwMsg);
+    return !emailMsg && !pwMsg;
   };
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -146,8 +151,18 @@ export function LoginForm() {
             setFormError(t("signInFailed"));
         }
       } else if (err instanceof ApiRequestError) {
-        if (err.status === 403) {
-          setFormError(t("notApproved"));
+        // Disambiguate 403 by the backend's error.code — different reasons get
+        // different messages. EMAIL_NOT_VERIFIED was being shown as the
+        // "account not approved" message which is wrong.
+        if (err.code === "EMAIL_NOT_VERIFIED") {
+          setFormError(t("emailNotVerified"));
+        } else if (err.code === "ACCOUNT_SUSPENDED") {
+          setFormError(t("accountSuspended"));
+        } else if (err.status === 403) {
+          // Trust the backend's message for other 403s (forbidden, role
+          // restrictions, etc.) — falls back to the generic notApproved string
+          // only if the backend didn't return a message.
+          setFormError(err.message || t("notApproved"));
         } else if (err.status === 401) {
           setFormError(t("authFailed"));
         } else {
@@ -214,6 +229,7 @@ export function LoginForm() {
           value={email}
           error={emailError}
           onChange={(e) => { setEmail(e.target.value); if (emailError) setEmailError(""); }}
+          onBlur={() => setEmailError(validateEmail(email))}
         />
         <Input
           label={t("password")}
@@ -222,6 +238,7 @@ export function LoginForm() {
           value={pw}
           error={pwError}
           onChange={(e) => { setPw(e.target.value); if (pwError) setPwError(""); }}
+          onBlur={() => setPwError(validatePassword(pw))}
           rightSlot={
             <button
               type="button"

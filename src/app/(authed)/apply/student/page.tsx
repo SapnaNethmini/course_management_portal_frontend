@@ -60,7 +60,10 @@ export default function ApplyStudentPage() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    // Gate the submission behind a profile-completeness check the first time.
+    // Show the profile-incomplete WARNING dialog the first time only.
+    // It's informational — Skip submits anyway with no field validation,
+    // and Complete navigates to the Profile section. Either way, the
+    // application itself is never blocked by missing profile fields.
     if (!profileChecked && !isProfileExtrasComplete(loadProfileExtras(user.uid))) {
       setProfileDialogOpen(true);
       return;

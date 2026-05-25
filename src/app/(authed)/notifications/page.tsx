@@ -1,9 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { useNotifications } from "@/application/hooks/useNotifications";
+
+const PAGE_SIZE = 25;
 
 function formatRelative(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -39,11 +42,16 @@ function categoryTone(category: string | null | undefined): string {
 export default function StudentNotificationsPage() {
   const router = useRouter();
   const { items, unreadCount, loading, markRead, markAllRead } = useNotifications();
+  const [page, setPage] = useState(0);
 
   const handleClick = (id: string, link: string | null | undefined, read: boolean) => {
     if (!read) markRead(id);
     if (link) router.push(link);
   };
+
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const pagedItems = items.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   return (
     <div className="page">
@@ -77,7 +85,7 @@ export default function StudentNotificationsPage() {
         </div>
       ) : (
         <div className="activity">
-          {items.map((n) => {
+          {pagedItems.map((n) => {
             const clickable = !n.read || !!n.link;
             return (
               <div
@@ -115,6 +123,33 @@ export default function StudentNotificationsPage() {
               </div>
             );
           })}
+
+          {items.length > 0 && (
+            <div style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "16px 4px 4px",
+              fontFamily: "var(--font-body)",
+              fontSize: 13,
+              color: "var(--color-body-green)",
+              flexWrap: "wrap",
+              gap: 10,
+            }}>
+              <span>
+                Showing <b>{safePage * PAGE_SIZE + 1}</b>–<b>{Math.min((safePage + 1) * PAGE_SIZE, items.length)}</b> of <b>{items.length}</b>
+                {totalPages > 1 && <> · Page <b>{safePage + 1}</b> of <b>{totalPages}</b></>}
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Button size="sm" variant="secondary" icon="chevron-left" disabled={safePage === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                  Previous
+                </Button>
+                <Button size="sm" variant="secondary" iconAfter="chevron-right" disabled={safePage >= totalPages - 1} onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}>
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -34,18 +34,45 @@ export function RegisterForm() {
   const clearField = (field: string) =>
     setErrors((prev) => { const next = { ...prev }; delete next[field]; return next; });
 
+  // Per-field validators so the same logic powers both onBlur (surface
+  // errors when the user leaves the field) and onSubmit (final guard).
+  const validateField = (field: string, value: string, pwForConfirm?: string): string => {
+    switch (field) {
+      case "firstName":
+        return value.trim() ? "" : t("firstNameRequired");
+      case "lastName":
+        return value.trim() ? "" : t("lastNameRequired");
+      case "email":
+        if (!value.trim()) return t("emailRequired");
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return t("emailInvalid");
+        return "";
+      case "pw":
+        if (!value) return t("passwordRequired");
+        if (value.length < 10) return t("passwordTooShort");
+        if (!/(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^A-Za-z0-9])/.test(value))
+          return t("passwordRequirements");
+        return "";
+      case "confirmPw":
+        if (!value) return t("confirmPasswordRequired");
+        if (value !== (pwForConfirm ?? pw)) return t("passwordsMismatch");
+        return "";
+      default:
+        return "";
+    }
+  };
+
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!firstName.trim()) e.firstName = t("firstNameRequired");
-    if (!lastName.trim()) e.lastName = t("lastNameRequired");
-    if (!email.trim()) e.email = t("emailRequired");
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) e.email = t("emailInvalid");
-    if (!pw) e.pw = t("passwordRequired");
-    else if (pw.length < 10) e.pw = t("passwordTooShort");
-    else if (!/(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^A-Za-z0-9])/.test(pw))
-      e.pw = t("passwordRequirements");
-    if (!confirmPw) e.confirmPw = t("confirmPasswordRequired");
-    else if (pw !== confirmPw) e.confirmPw = t("passwordsMismatch");
+    const fName = validateField("firstName", firstName);
+    if (fName) e.firstName = fName;
+    const lName = validateField("lastName", lastName);
+    if (lName) e.lastName = lName;
+    const em = validateField("email", email);
+    if (em) e.email = em;
+    const password = validateField("pw", pw);
+    if (password) e.pw = password;
+    const confirm = validateField("confirmPw", confirmPw, pw);
+    if (confirm) e.confirmPw = confirm;
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -115,6 +142,10 @@ export function RegisterForm() {
             value={firstName}
             error={errors.firstName}
             onChange={(e) => { setFirstName(e.target.value); clearField("firstName"); }}
+            onBlur={() => {
+              const msg = validateField("firstName", firstName);
+              if (msg) setFieldError("firstName", msg);
+            }}
           />
           <Input
             label={t("lastName")}
@@ -122,6 +153,10 @@ export function RegisterForm() {
             value={lastName}
             error={errors.lastName}
             onChange={(e) => { setLastName(e.target.value); clearField("lastName"); }}
+            onBlur={() => {
+              const msg = validateField("lastName", lastName);
+              if (msg) setFieldError("lastName", msg);
+            }}
           />
         </div>
         <Input
@@ -131,6 +166,10 @@ export function RegisterForm() {
           value={email}
           error={errors.email}
           onChange={(e) => { setEmail(e.target.value); clearField("email"); }}
+          onBlur={() => {
+            const msg = validateField("email", email);
+            if (msg) setFieldError("email", msg);
+          }}
         />
         <Input
           label={t("password")}
@@ -139,6 +178,10 @@ export function RegisterForm() {
           value={pw}
           error={errors.pw}
           onChange={(e) => { setPw(e.target.value); clearField("pw"); }}
+          onBlur={() => {
+            const msg = validateField("pw", pw);
+            if (msg) setFieldError("pw", msg);
+          }}
           hint={errors.pw ? undefined : t("passwordHint")}
           rightSlot={
             <button
@@ -157,6 +200,10 @@ export function RegisterForm() {
           placeholder={t("confirmPasswordPlaceholder")}
           value={confirmPw}
           onChange={(e) => { setConfirmPw(e.target.value); clearField("confirmPw"); }}
+          onBlur={() => {
+            const msg = validateField("confirmPw", confirmPw, pw);
+            if (msg) setFieldError("confirmPw", msg);
+          }}
           error={errors.confirmPw}
           rightSlot={
             <button

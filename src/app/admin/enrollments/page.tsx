@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { RowMenu } from "@/components/ui/RowMenu";
 import { RejectModal } from "@/components/enrollment/RejectModal";
+import { EnrollmentProfileDialog } from "@/components/admin/EnrollmentProfileDialog";
 import {
   useAdminEnrollmentQueue,
   isApproved,
@@ -33,6 +34,7 @@ function stateBadge(r: EnrollmentItem) {
 export default function AdminEnrollmentsPage() {
   const Q = useAdminEnrollmentQueue();
   const [rejectTarget, setRejectTarget] = useState<{ id: string; label: string } | null>(null);
+  const [viewing, setViewing] = useState<EnrollmentItem | null>(null);
 
   return (
     <div className="page">
@@ -42,10 +44,10 @@ export default function AdminEnrollmentsPage() {
             Enrollments <span className="page-sub">· course-access approvals</span>
           </h1>
           <div className="greeting">
-            <b style={{ color: "#152A24" }}>{Q.total}</b> total ·{" "}
-            <b style={{ color: "#152A24" }}>{Q.pendingCount}</b> pending ·{" "}
-            <b style={{ color: "#152A24" }}>{Q.approvedCount}</b> approved ·{" "}
-            <b style={{ color: "#152A24" }}>{Q.rejectedCount}</b> rejected.
+            <b style={{ color: "var(--color-primary)" }}>{Q.total}</b> total ·{" "}
+            <b style={{ color: "var(--color-primary)" }}>{Q.pendingCount}</b> pending ·{" "}
+            <b style={{ color: "var(--color-primary)" }}>{Q.approvedCount}</b> approved ·{" "}
+            <b style={{ color: "var(--color-primary)" }}>{Q.rejectedCount}</b> rejected.
             Approving unlocks course materials for the student.
           </div>
         </div>
@@ -108,11 +110,11 @@ export default function AdminEnrollmentsPage() {
 
         <table className="tbl" style={{ tableLayout: "fixed", width: "100%" }}>
           <colgroup>
-            <col style={{ width: "35%" }} />
-            <col style={{ width: "30%" }} />
+            <col style={{ width: "32%" }} />
+            <col style={{ width: "26%" }} />
             <col style={{ minWidth: 130 }} />
             <col style={{ minWidth: 100 }} />
-            <col style={{ width: 60 }} />
+            <col style={{ minWidth: 140 }} />
           </colgroup>
           <thead>
             <tr>
@@ -163,7 +165,7 @@ export default function AdminEnrollmentsPage() {
                             <div style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                               {r.student.firstName} {r.student.lastName}
                             </div>
-                            <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "#41574A", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--color-body-green)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                               {r.student.email}
                             </div>
                           </>
@@ -195,15 +197,27 @@ export default function AdminEnrollmentsPage() {
                   <td className="muted" style={{ whiteSpace: "nowrap" }}>{formatDate(r.createdAt)}</td>
                   <td>{stateBadge(r)}</td>
                   <td style={{ textAlign: "right" }}>
-                    {pending ? (
-                      <RowMenu
-                        ariaLabel={`Actions for enrollment ${r.id}`}
-                        items={[
-                          { label: "Approve", ico: "check-circle", onClick: () => Q.approve(r.id) },
-                          { label: "Reject",  ico: "x-circle",     onClick: () => setRejectTarget({ id: r.id, label }), danger: true },
-                        ]}
-                      />
-                    ) : null}
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon="eye"
+                        onClick={() => setViewing(r)}
+                        title="View student profile"
+                      >
+                        View
+                      </Button>
+                      {pending ? (
+                        <RowMenu
+                          ariaLabel={`Actions for enrollment ${r.id}`}
+                          items={[
+                            { label: "View profile", ico: "eye",        onClick: () => setViewing(r) },
+                            { label: "Approve",      ico: "check-circle", onClick: () => Q.approve(r.id) },
+                            { label: "Reject",       ico: "x-circle",     onClick: () => setRejectTarget({ id: r.id, label }), danger: true },
+                          ]}
+                        />
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               );
@@ -235,6 +249,19 @@ export default function AdminEnrollmentsPage() {
           setRejectTarget(null);
         }}
         onCancel={() => setRejectTarget(null)}
+      />
+
+      <EnrollmentProfileDialog
+        enrollment={viewing}
+        onClose={() => setViewing(null)}
+        onApprove={(id) => {
+          Q.approve(id);
+          setViewing(null);
+        }}
+        onReject={(id, label) => {
+          setViewing(null);
+          setRejectTarget({ id, label });
+        }}
       />
     </div>
   );

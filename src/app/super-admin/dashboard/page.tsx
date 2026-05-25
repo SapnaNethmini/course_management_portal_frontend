@@ -77,7 +77,7 @@ export default function SuperAdminDashboardPage() {
     let cancelled = false;
 
     Promise.allSettled([
-      apiRequest<{ total: number }>(`/users?role=student&limit=1`),
+      apiRequest<{ total: number }>(`/users?roles=student&limit=1`),
       apiRequest<{ total: number }>(`/courses?state=published&limit=1`),
     ]).then((results) => {
       if (cancelled) return;

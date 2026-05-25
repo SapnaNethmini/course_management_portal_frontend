@@ -125,7 +125,7 @@ export default function StudentDashboardPage() {
             {totalCompletedLessons > 0 ? (
               <>
                 You&apos;ve completed{" "}
-                <b style={{ color: "#152A24" }}>
+                <b style={{ color: "var(--color-primary)" }}>
                   {totalCompletedLessons} {totalCompletedLessons === 1 ? "lesson" : "lessons"}
                 </b>{" "}
                 so far. Keep it up.

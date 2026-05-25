@@ -19,15 +19,21 @@ interface DirectoryUser {
 interface Props {
   attendance: AttendanceEntry[];
   onChange: (next: AttendanceEntry[]) => void;
+  /**
+   * Constrain the directory search to specific roles (e.g. ["member"] for a
+   * Leader, ["member","leader"] for a G12). Omitting it disables the filter.
+   */
+  roleFilter?: string[] | null;
 }
 
-export function AttendanceEditor({ attendance, onChange }: Props) {
+export function AttendanceEditor({ attendance, onChange, roleFilter }: Props) {
+  const roleFilterKey = (roleFilter ?? []).join(",");
   const [adding, setAdding] = useState(false);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<DirectoryUser[]>([]);
   const [searching, setSearching] = useState(false);
 
-  // Real-time search: GET /users?name=<prefix> with case fan-out (Title-Case
+  // Real-time search: GET /users?search=<prefix> with case fan-out (Title-Case
   // and as-typed), debounced 250ms. Mirrors the AddMemberDialog pattern.
   useEffect(() => {
     if (!adding) { setResults([]); return; }
@@ -40,10 +46,11 @@ export function AttendanceEditor({ attendance, onChange }: Props) {
         const titleCase = term.charAt(0).toUpperCase() + term.slice(1).toLowerCase();
         const variants = Array.from(new Set([term, titleCase]));
         const responses = await Promise.all(
-          variants.map((v) =>
-            apiRequest<unknown>(`/users?${new URLSearchParams({ name: v, limit: "20" })}`)
-              .catch(() => null),
-          ),
+          variants.map((v) => {
+            const qs = new URLSearchParams({ search: v, limit: "20" });
+            if (roleFilter && roleFilter.length > 0) qs.set("roles", roleFilter.join(","));
+            return apiRequest<unknown>(`/users?${qs}`).catch(() => null);
+          }),
         );
         if (cancelled) return;
         const seen = new Set<string>();
@@ -64,6 +71,11 @@ export function AttendanceEditor({ attendance, onChange }: Props) {
             // Skip admins and anyone already in the attendance list.
             const roles = Array.isArray(u.roles) ? (u.roles as string[]) : [];
             if (roles.includes("admin") || roles.includes("super_admin")) continue;
+            // Defence-in-depth in case the backend ignored ?roles=.
+            if (roleFilter && roleFilter.length > 0 && roles.length > 0) {
+              const allowed = new Set(roleFilter);
+              if (!roles.some((r) => allowed.has(r))) continue;
+            }
             if (attendance.some((a) => a.memberId === uid)) continue;
             seen.add(uid);
             merged.push({
@@ -86,7 +98,7 @@ export function AttendanceEditor({ attendance, onChange }: Props) {
     }, 250);
     return () => { cancelled = true; clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, adding]);
+  }, [q, adding, roleFilterKey]);
 
   const fullName = (u: DirectoryUser): string =>
     [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || u.email || u.uid;

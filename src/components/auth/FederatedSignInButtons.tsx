@@ -5,10 +5,15 @@ import {
   GoogleAuthProvider,
   OAuthProvider,
   signInWithPopup,
+  signInWithCustomToken,
+  signOut,
 } from "firebase/auth";
 import { useAppDispatch } from "@/application/hooks/useAppDispatch";
+import { useAppSelector } from "@/application/hooks/useAppSelector";
 import { pushToast } from "@/application/slices/uiSlice";
 import { auth } from "@/infrastructure/firebase/auth";
+import { apiRequest, ApiRequestError } from "@/infrastructure/api/request";
+import { setFederatedSignInInProgress } from "@/infrastructure/auth/federatedSignInState";
 import { GoogleIcon } from "@/components/ui/GoogleIcon";
 import { AppleIcon } from "./AppleIcon";
 
@@ -17,18 +22,34 @@ interface Props {
   disabled?: boolean;
 }
 
+interface FederatedExchangeResponse {
+  firebaseToken: string;
+  uid: string;
+  isNewUser: boolean;
+}
+
 /**
- * Google + Apple sign-in buttons.
+ * Google + Apple federated sign-in (V2 spec §2.2).
  *
- * Flow: signInWithPopup → Firebase session created → FirebaseAuthListener
- * picks up onIdTokenChanged → calls GET /me → routes by roles[].
+ * Flow:
+ *   1. signInWithPopup — pop the provider OAuth flow, extract the provider
+ *      ID token from the result. We don't keep the Firebase session this
+ *      creates; we only wanted the ID token.
+ *   2. signOut — discard the popup-created Firebase session.
+ *   3. POST /auth/federated/{google|apple} with the provider ID token.
+ *      Backend verifies the token, creates the Member row + Firebase user
+ *      (via Admin SDK) if new, and returns a Firebase custom token.
+ *   4. signInWithCustomToken — establish the real Firebase session for a
+ *      UID that already has a backend row, so the listener's /me call will
+ *      succeed and routing will happen.
  *
- * No custom-token exchange needed — Firebase handles the session directly.
- * When the backend ships POST /auth/federated/* for user creation/linking,
- * that can be wired in here without changing the routing logic.
+ * setFederatedSignInInProgress suppresses FirebaseAuthListener during the
+ * popup → signOut → exchange dance, so it doesn't call /me against an
+ * unprovisioned UID partway through.
  */
 export function FederatedSignInButtons({ context = "signin", disabled }: Props) {
   const dispatch = useAppDispatch();
+  const preferredLanguage = useAppSelector((s) => s.locale.current);
   const [busy, setBusy] = useState<"google" | "apple" | null>(null);
 
   async function handleFederated(provider: "google" | "apple") {
@@ -37,6 +58,8 @@ export function FederatedSignInButtons({ context = "signin", disabled }: Props) 
 
     const label = provider === "google" ? "Google" : "Apple";
     const action = context === "signin" ? "sign-in" : "sign-up";
+
+    setFederatedSignInInProgress(true);
 
     try {
       const authProvider =
@@ -54,16 +77,48 @@ export function FederatedSignInButtons({ context = "signin", disabled }: Props) 
               return ap;
             })();
 
-      // signInWithPopup completes the Firebase session. FirebaseAuthListener
-      // (onIdTokenChanged) calls GET /me and dispatches setUser → router.push.
-      await signInWithPopup(auth, authProvider);
+      // Step 1: get the provider ID token via Firebase's popup flow.
+      const result = await signInWithPopup(auth, authProvider);
 
+      const credential =
+        provider === "google"
+          ? GoogleAuthProvider.credentialFromResult(result)
+          : OAuthProvider.credentialFromResult(result);
+      const providerIdToken = credential?.idToken;
+
+      if (!providerIdToken) {
+        throw new Error(`No ${label} ID token returned from sign-in popup`);
+      }
+
+      // Step 2: discard the popup-created Firebase session. The backend will
+      // mint the real one in step 3.
+      await signOut(auth);
+
+      // Step 3: exchange the provider ID token for a Firebase custom token.
+      // Endpoint is public per V2 spec §2.2 — no Authorization header.
+      const endpoint =
+        provider === "google" ? "/auth/federated/google" : "/auth/federated/apple";
+      const exchange = await apiRequest<FederatedExchangeResponse>(endpoint, {
+        method: "POST",
+        auth: false,
+        body: { idToken: providerIdToken, preferredLanguage },
+      });
+
+      // Step 4: clear the suppression flag so FirebaseAuthListener processes
+      // the next onIdTokenChanged event normally, then sign in with the
+      // backend-minted custom token.
+      setFederatedSignInInProgress(false);
+      await signInWithCustomToken(auth, exchange.firebaseToken);
     } catch (err) {
+      setFederatedSignInInProgress(false);
+      // Make sure we're not left holding a half-finished Firebase session
+      // from the popup step.
+      await signOut(auth).catch(() => null);
+
       const code = (err as { code?: string })?.code ?? "unknown";
-      // Log every error so we can diagnose the exact Firebase error code.
       console.error(`[FederatedSignIn] ${provider} error:`, code, err);
 
-      // Don't show a toast when the user simply closed the popup themselves.
+      // Don't show a toast when the user closed the popup themselves.
       if (
         code === "auth/popup-closed-by-user" ||
         code === "auth/cancelled-popup-request"
@@ -82,8 +137,18 @@ export function FederatedSignInButtons({ context = "signin", disabled }: Props) 
         message = "Your browser blocked the sign-in popup. Allow popups for this site and try again.";
       } else if (code === "auth/unauthorized-domain") {
         message = "This domain isn't authorized for sign-in. Add it under Firebase → Authentication → Settings → Authorized domains.";
+      } else if (code === "auth/user-disabled") {
+        message = `This ${label} account is disabled. Contact an administrator.`;
       } else if (code === "auth/invalid-credential" && provider === "apple") {
         message = "Apple rejected the sign-in. The Services ID, Team ID, Key ID, or private key in Firebase Console may not match the Apple Developer registration.";
+      } else if (err instanceof ApiRequestError) {
+        if (err.status === 401 && err.code === "FEDERATED_TOKEN_INVALID") {
+          message = `${label} rejected the sign-in token. Please try again.`;
+        } else if (err.status === 404) {
+          message = `${label} sign-in is not yet available on the server. Please try again later.`;
+        } else {
+          message = err.message;
+        }
       }
 
       dispatch(

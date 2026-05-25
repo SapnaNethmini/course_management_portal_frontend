@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
-import { useMyCells, useCells } from "@/application/hooks/useCells";
+import { useMyCells } from "@/application/hooks/useCells";
 import { CellCard } from "@/components/cells/CellCard";
 import { SwitchBanner } from "@/components/member/SwitchBanner";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -20,12 +20,9 @@ export default function MyCellsPage() {
   const bannerVariant: "g12" | "leader" = isG12 ? "g12" : "leader";
   const bannerLabel = bannerVariant === "g12" ? "G12 Leader" : "Leader";
 
-  const { cells: memberCells, loading: mineLoading } = useMyCells();
-  const { cells: allCells,   loading: allLoading   } = useCells({ state: "active" });
-
-  const mineIds    = new Set(memberCells.map((c) => c.id));
-  const otherCells = allCells.filter((c) => !mineIds.has(c.id)).slice(0, 6);
-  const loading    = mineLoading || allLoading;
+  // Member view shows ONLY the cells the user belongs to. The "other available
+  // cells" directory was intentionally removed — members don't browse cells.
+  const { cells: memberCells, loading } = useMyCells();
 
   return (
     <div className="page">
@@ -66,18 +63,6 @@ export default function MyCellsPage() {
         </section>
       )}
 
-      {otherCells.length > 0 && (
-        <section>
-          <h2 style={{ margin: "0 0 4px", fontFamily: "var(--font-heading)", fontSize: 17, fontWeight: 600, color: "var(--color-primary)" }}>
-            Other available cells <span style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "var(--color-body-green)", fontWeight: 500, marginLeft: 8 }}>· view-only</span>
-          </h2>
-          <div className="cell-grid" style={{ opacity: 0.85, marginTop: 14 }}>
-            {otherCells.map((c) => (
-              <CellCard key={c.id} cell={c} readonly />
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }

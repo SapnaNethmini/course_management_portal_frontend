@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
 import { Badge } from "@/components/ui/Badge";
@@ -8,6 +9,8 @@ import { Icon } from "@/components/ui/Icon";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useRoleRequests, type RoleRequest } from "@/application/hooks/useRoleRequests";
 import { useEnrollments, type Enrollment } from "@/application/hooks/useEnrollments";
+
+const PAGE_SIZE = 10;
 
 /**
  * My Requests — surface adapts to the user's existing roles.
@@ -76,9 +79,49 @@ export default function MyRequestsPage() {
   );
 }
 
+/* ─── Inline pagination footer — shared by both list types ───────── */
+function PaginationFooter({ total, page, totalPages, onPage }: {
+  total: number;
+  page: number;
+  totalPages: number;
+  onPage: (next: number) => void;
+}) {
+  if (total === 0) return null;
+  return (
+    <div style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: "12px 4px 4px",
+      fontFamily: "var(--font-body)",
+      fontSize: 13,
+      color: "var(--color-body-green)",
+      flexWrap: "wrap",
+      gap: 10,
+    }}>
+      <span>
+        Showing <b>{page * PAGE_SIZE + 1}</b>–<b>{Math.min((page + 1) * PAGE_SIZE, total)}</b> of <b>{total}</b>
+        {totalPages > 1 && <> · Page <b>{page + 1}</b> of <b>{totalPages}</b></>}
+      </span>
+      <div style={{ display: "flex", gap: 8 }}>
+        <Button size="sm" variant="secondary" icon="chevron-left" disabled={page === 0} onClick={() => onPage(Math.max(0, page - 1))}>
+          Previous
+        </Button>
+        <Button size="sm" variant="secondary" iconAfter="chevron-right" disabled={page >= totalPages - 1} onClick={() => onPage(Math.min(totalPages - 1, page + 1))}>
+          Next
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Role-request list (pure Member) ────────────────────────────── */
 function RoleRequestsList({ items, loading }: { items: RoleRequest[]; loading: boolean }) {
   const hasPending = items.some((r) => r.status === "pending");
+  const [page, setPage] = useState(0);
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const paged = items.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   if (loading) {
     return (
@@ -105,7 +148,7 @@ function RoleRequestsList({ items, loading }: { items: RoleRequest[]; loading: b
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {items.map((r) => {
+      {paged.map((r) => {
         const badge = STATUS_BADGE[r.status] ?? STATUS_BADGE.pending;
         return (
           <div key={r.id} style={{ background: "#fff", border: "1px solid var(--color-stroke)", borderRadius: 14, padding: "18px 20px", display: "grid", gridTemplateColumns: "1fr auto", gap: 16, alignItems: "center" }}>
@@ -141,12 +184,18 @@ function RoleRequestsList({ items, loading }: { items: RoleRequest[]; loading: b
           </div>
         );
       })}
+      <PaginationFooter total={items.length} page={safePage} totalPages={totalPages} onPage={setPage} />
     </div>
   );
 }
 
 /* ─── Enrollment-request list (Member + Student) — real API ──────── */
 function EnrollmentRequestsList({ items, loading }: { items: Enrollment[]; loading: boolean }) {
+  const [page, setPage] = useState(0);
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const paged = items.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+
   if (loading) {
     return <div style={{ textAlign: "center", padding: 48, color: "var(--color-muted)" }}><Icon name="loader" size={20} /></div>;
   }
@@ -167,7 +216,7 @@ function EnrollmentRequestsList({ items, loading }: { items: Enrollment[]; loadi
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {items.map((r) => {
+      {paged.map((r) => {
         const enrollStatus = (r.status ?? r.state ?? "pending") as string;
         const badge = STATUS_BADGE[enrollStatus] ?? STATUS_BADGE.pending;
         return (
@@ -205,6 +254,7 @@ function EnrollmentRequestsList({ items, loading }: { items: Enrollment[]; loadi
           </div>
         );
       })}
+      <PaginationFooter total={items.length} page={safePage} totalPages={totalPages} onPage={setPage} />
       <div style={{ textAlign: "center", marginTop: 12 }}>
         <Button variant="ghost" icon="arrow-right" onClick={() => (window.location.href = "/browse-courses")}>
           Apply to another course

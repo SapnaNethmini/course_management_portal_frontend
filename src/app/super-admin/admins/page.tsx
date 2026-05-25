@@ -38,6 +38,8 @@ function formatDate(iso: string | null | undefined): string {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
+const PAGE_SIZE = 25;
+
 export default function SuperAdminAdminsPage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
@@ -48,6 +50,7 @@ export default function SuperAdminAdminsPage() {
   const [showForm, setShowForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
   const [toRemove, setToRemove] = useState<AdminUser | null>(null);
   const [toSuspend, setToSuspend] = useState<AdminUser | null>(null);
   const [toReactivate, setToReactivate] = useState<AdminUser | null>(null);
@@ -120,6 +123,13 @@ export default function SuperAdminAdminsPage() {
       a.email.toLowerCase().includes(q),
     );
   }, [admins, query]);
+
+  // Reset to first page when the search narrows the list.
+  useEffect(() => { setPage(0); }, [query]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredAdmins.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const pagedAdmins = filteredAdmins.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   /* ── Create admin ──────────────────────────────────────────────────── */
 
@@ -289,7 +299,7 @@ export default function SuperAdminAdminsPage() {
                 </td>
               </tr>
             )}
-            {filteredAdmins.map((a) => {
+            {pagedAdmins.map((a) => {
               const fullName = `${a.firstName} ${a.lastName}`.trim();
               const promoted = a.roles?.includes("student");
               return (
@@ -306,7 +316,7 @@ export default function SuperAdminAdminsPage() {
                           {fullName || a.uid.slice(0, 12) + "…"}
                           {promoted && <Badge tone="info">Promoted student</Badge>}
                         </div>
-                        <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "#41574A" }}>
+                        <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--color-body-green)" }}>
                           {a.email}
                         </div>
                       </div>
@@ -343,6 +353,34 @@ export default function SuperAdminAdminsPage() {
             })}
           </tbody>
         </table>
+
+        {filteredAdmins.length > 0 && (
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "12px 16px",
+            borderTop: "1px solid var(--color-stroke)",
+            fontFamily: "var(--font-body)",
+            fontSize: 13,
+            color: "var(--color-body-green)",
+            flexWrap: "wrap",
+            gap: 10,
+          }}>
+            <span>
+              Showing <b>{safePage * PAGE_SIZE + 1}</b>–<b>{Math.min((safePage + 1) * PAGE_SIZE, filteredAdmins.length)}</b> of <b>{filteredAdmins.length}</b>
+              {totalPages > 1 && <> · Page <b>{safePage + 1}</b> of <b>{totalPages}</b></>}
+            </span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button size="sm" variant="secondary" icon="chevron-left" disabled={safePage === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                Previous
+              </Button>
+              <Button size="sm" variant="secondary" iconAfter="chevron-right" disabled={safePage >= totalPages - 1} onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}>
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <ConfirmDialog

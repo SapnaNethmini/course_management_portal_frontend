@@ -47,6 +47,15 @@ interface UseCellsParams {
   area?: string;
   /** Filter by leader UID (per spec). */
   leaderUid?: string;
+  /**
+   * Hint to the server about which scope to apply. The auto-scope returns
+   * "cells you lead" for a Leader caller, which is too narrow for the
+   * Leader-page "Other cells" tab — that tab wants the same org-wide
+   * directory the Member role implicitly sees. Sending `scope=org` (or
+   * `scope=all`) lets the backend opt into the wider view when supported;
+   * older backends ignore the param without error.
+   */
+  scope?: "mine" | "network" | "org" | "all";
 }
 
 /**
@@ -71,6 +80,7 @@ export function useCells(params?: UseCellsParams) {
         if (params?.area?.trim())   qs.set("area", params.area.trim());
         if (params?.leaderUid)      qs.set("leaderUid", params.leaderUid);
         if (params?.search?.trim()) qs.set("search", params.search.trim());
+        if (params?.scope)          qs.set("scope", params.scope);
         if (cursor)                 qs.set("cursor", cursor);
         const res = await apiRequest<unknown>(`/cells?${qs}`);
         collected.push(...parseList(res));
@@ -85,7 +95,7 @@ export function useCells(params?: UseCellsParams) {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params?.search, params?.type, params?.state, params?.area, params?.leaderUid]);
+  }, [params?.search, params?.type, params?.state, params?.area, params?.leaderUid, params?.scope]);
 
   useEffect(() => { fetchCells(); }, [fetchCells]);
 

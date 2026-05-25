@@ -20,6 +20,12 @@ interface ProfileUpdate {
   phoneNumber?: string | null;
   preferredLanguage?: "si" | "ta" | "en";
   profilePhotoUrl?: string | null;
+  /** Extended fields per PATCH /me §3.2. Required by the student
+   *  role-request flow; nullable on the endpoint itself. */
+  dateOfBirth?: string | null;
+  gender?: "male" | "female" | "other" | null;
+  address?: string | null;
+  qualificationTitle?: string | null;
 }
 
 export function useProfile() {

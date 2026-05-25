@@ -40,11 +40,11 @@ export function NotificationBell({ items, onItemClick }: Props) {
             top: "calc(100% + 8px)",
             right: 0,
             width: 360,
-            background: "#fff",
+            background: "var(--color-surface)",
             borderRadius: 12,
             boxShadow:
               "0 10px 28px -8px rgba(21,42,36,0.18), 0 4px 8px -4px rgba(21,42,36,0.08)",
-            border: "1px solid rgba(21,42,36,0.08)",
+            border: "1px solid var(--color-stroke)",
             zIndex: 100,
             overflow: "hidden",
           }}
@@ -63,7 +63,7 @@ export function NotificationBell({ items, onItemClick }: Props) {
                 fontFamily: "var(--font-heading)",
                 fontWeight: 600,
                 fontSize: 15,
-                color: "#152A24",
+                color: "var(--color-primary)",
               }}
             >
               Notifications
@@ -74,7 +74,7 @@ export function NotificationBell({ items, onItemClick }: Props) {
                   fontFamily: "var(--font-mono)",
                   fontSize: 11,
                   background: "#BCE955",
-                  color: "#152A24",
+                  color: "var(--color-primary)",
                   padding: "2px 8px",
                   borderRadius: 9999,
                   fontWeight: 600,
@@ -90,7 +90,7 @@ export function NotificationBell({ items, onItemClick }: Props) {
                 style={{
                   padding: "32px 16px",
                   textAlign: "center",
-                  color: "#41574A",
+                  color: "var(--color-body-green)",
                   fontFamily: "var(--font-body)",
                   fontSize: 13,
                 }}
@@ -139,7 +139,7 @@ export function NotificationBell({ items, onItemClick }: Props) {
                         fontFamily: "var(--font-body)",
                         fontWeight: 600,
                         fontSize: 13,
-                        color: "#152A24",
+                        color: "var(--color-primary)",
                         lineHeight: 1.4,
                       }}
                     >
@@ -150,7 +150,7 @@ export function NotificationBell({ items, onItemClick }: Props) {
                         style={{
                           fontFamily: "var(--font-body)",
                           fontSize: 12,
-                          color: "#41574A",
+                          color: "var(--color-body-green)",
                           marginTop: 2,
                           lineHeight: 1.4,
                         }}

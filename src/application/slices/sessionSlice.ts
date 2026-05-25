@@ -52,6 +52,13 @@ export interface SessionUser {
   lastName: string;
   phoneNumber?: string | null;
   profilePhotoUrl: string | null;
+  /** Extended profile (PATCH /me §3.2). Required by the student
+   *  role-request flow per spec; optional on the profile form itself —
+   *  the apply page just warns when they're missing. */
+  dateOfBirth?: string | null;
+  gender?: "male" | "female" | "other" | null;
+  address?: string | null;
+  qualificationTitle?: string | null;
   createdAt?: string;
   updatedAt?: string;
   name?: string;

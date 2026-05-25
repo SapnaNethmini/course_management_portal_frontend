@@ -44,8 +44,9 @@ export default function NewCellPage() {
   const [g12Searching, setG12Searching] = useState(false);
   const [selectedG12, setSelectedG12] = useState<G12Candidate | null>(null);
 
-  // Real-time typeahead: GET /users?role=g12&name=<prefix> with case fan-out.
-  // Same pattern used by AddMemberDialog and AttendanceEditor.
+  // Real-time typeahead: GET /users?role=g12&name=<prefix> per spec §4.1.
+  // `name` is a case-sensitive prefix match on firstName, so we fan out the
+  // term to original-case AND Title-Case to catch both "member1" and "Member1".
   useEffect(() => {
     if (isG12) return; // G12 creators use their own UID; no picker needed.
     const term = g12Query.trim();

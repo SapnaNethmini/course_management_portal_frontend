@@ -25,10 +25,10 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "EduPath | Course Management Portal",
+  title: "TCCR | The Christian Center Rathmalana",
   description:
-    "Engineering & data skills, on your schedule. Multi-module course programmes in software, ML and analytics.",
-  icons: { icon: "/assets/logo-mark.svg" },
+    "Bible School courses and Cell Group fellowship in one platform. Browse the catalogue, attend weekly cells, and grow with the TCCR community.",
+  icons: { icon: "/tccr-logo.jpeg" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -258,7 +258,7 @@ export default function SuperAdminStudentsPage() {
         <div>
           <h1>Users</h1>
           <div className="greeting">
-            <b style={{ color: "#152A24" }}>{studentsLoading ? "…" : allStudents.length}</b> users registered.
+            <b style={{ color: "var(--color-primary)" }}>{studentsLoading ? "…" : allStudents.length}</b> users registered.
             Promote a Member to Leader or G12 here — roles are additive, so members keep their existing access.
           </div>
         </div>
@@ -365,7 +365,7 @@ export default function SuperAdminStudentsPage() {
                         <div style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {fullName || s.uid.slice(0, 12) + "…"}
                         </div>
-                        <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "#41574A", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--color-body-green)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {s.email}
                         </div>
                       </div>

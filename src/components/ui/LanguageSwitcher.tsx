@@ -68,9 +68,12 @@ export function LanguageSwitcher({ current, onChange, dark }: Props) {
           gap: 6,
           padding: "6px 12px",
           borderRadius: 9999,
+          // Use the theme surface variables so the pill stays readable in
+          // both light and dark. Previously hardcoded #fff bg + a text colour
+          // that flipped white in dark mode produced an invisible pill.
           border: `1px solid ${dark ? "rgba(255,255,255,0.16)" : "var(--color-stroke)"}`,
-          background: dark ? "rgba(255,255,255,0.06)" : "#fff",
-          color: dark ? "#fff" : "var(--color-primary)",
+          background: dark ? "rgba(255,255,255,0.06)" : "var(--color-surface)",
+          color: "var(--color-primary)",
           fontFamily: "var(--font-body)",
           fontWeight: 600,
           fontSize: 12,
@@ -90,7 +93,7 @@ export function LanguageSwitcher({ current, onChange, dark }: Props) {
             right: 0,
             zIndex: 20,
             minWidth: 160,
-            background: "#fff",
+            background: "var(--color-surface)",
             border: "1px solid var(--color-stroke)",
             borderRadius: 12,
             boxShadow: "0 8px 24px -8px rgba(21,42,36,0.18)",

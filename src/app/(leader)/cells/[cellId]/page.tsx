@@ -15,6 +15,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useCell, useCellMembers } from "@/application/hooks/useCell";
 import { useCellReports } from "@/application/hooks/useCellReports";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
+import { cellMemberSearchRoles } from "@/lib/cellMemberSearchRoles";
 
 export default function LeaderCellDetailPage() {
   const router = useRouter();
@@ -112,6 +113,7 @@ export default function LeaderCellDetailPage() {
       <AddMemberDialog
         open={addOpen}
         existingUids={(cell.members ?? []).map((m) => (typeof m === "string" ? m : (m.uid ?? "")))}
+        roleFilter={cellMemberSearchRoles(user?.roles)}
         busy={memberBusy}
         onCancel={() => setAddOpen(false)}
         onConfirm={handleAddMembers}

@@ -102,36 +102,53 @@ export default function StudentCourseViewerPage() {
   // in this session (idempotent on backend but avoids duplicate toasts).
   const autoCompletedSubjects = useRef<Set<string>>(new Set());
 
-  // localStorage key for per-course / per-user lesson completion.
-  const progressKey = sessionUser && params.courseId
-    ? `edupath.lessons.${sessionUser.uid}.${params.courseId}`
-    : null;
+  /* ── Effective completed-subjects set ─────────────────────────────
+   * Backend always returns `completedCount` (e.g. 3) but doesn't always
+   * return `completedSubjectIds`. When IDs are missing, the tree can't
+   * unlock or tick anything correctly. As a fallback, assume sequential
+   * completion: treat the first `completedCount` subjects in semester/
+   * subject order as complete. When IDs ARE returned, we use them
+   * verbatim. Drives: tree locking, subject ticks, lesson backfill,
+   * initial active-lesson selection. */
+  const effectiveCompletedSubjects = useMemo(() => {
+    const set = new Set(completedSubjectsApi);
+    const target = progress?.completedCount ?? 0;
+    if (target > set.size && course?.semesters) {
+      const ordered: string[] = [];
+      for (const sem of course.semesters.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0))) {
+        for (const sub of (sem.subjects ?? []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0))) {
+          ordered.push(sub.id);
+        }
+      }
+      for (const id of ordered) {
+        if (set.size >= target) break;
+        set.add(id);
+      }
+    }
+    return set;
+  }, [completedSubjectsApi, progress?.completedCount, course?.semesters]);
 
-  // Guard: prevent the save effect from overwriting localStorage before the
-  // restore effect has flushed its state update. Without this, both effects
-  // fire when progressKey first becomes available (sessionUser loads from
-  // redux-persist) and save runs with the still-empty completedLessons set,
-  // erasing the previously saved progress.
-  const [restoredFromStorage, setRestoredFromStorage] = useState(false);
-
-  /* ── Restore + persist lesson-level completion in localStorage ───── */
-
+  /* ── Backfill lesson completion from completed subjects ──────────── */
+  // Mirror lessons inside every effectively-complete subject into the local
+  // completedLessons Set so the tree shows ticks correctly after refresh /
+  // logout-login. localStorage is intentionally NOT used — the source of
+  // truth is the backend's count + ID list.
   useEffect(() => {
-    if (!progressKey) return;
-    try {
-      const raw = localStorage.getItem(progressKey);
-      if (raw) setCompletedLessons(new Set(JSON.parse(raw) as string[]));
-    } catch { /* ignore */ }
-    setRestoredFromStorage(true);
-  }, [progressKey]);
-
-  useEffect(() => {
-    // Only save after we've finished restoring so we don't overwrite saved data.
-    if (!progressKey || !restoredFromStorage) return;
-    try {
-      localStorage.setItem(progressKey, JSON.stringify([...completedLessons]));
-    } catch { /* ignore */ }
-  }, [progressKey, completedLessons, restoredFromStorage]);
+    if (effectiveCompletedSubjects.size === 0) return;
+    setCompletedLessons((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const subjectId of effectiveCompletedSubjects) {
+        for (const l of lessonsBySubject[subjectId] ?? []) {
+          if (!next.has(l.id)) {
+            next.add(l.id);
+            changed = true;
+          }
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [effectiveCompletedSubjects, lessonsBySubject]);
 
   /* ── Fetch lessons for every subject in parallel (one call per subject) ── */
 
@@ -197,15 +214,21 @@ export default function StudentCourseViewerPage() {
   const prevLesson = activeIndex > 0 ? flatLessons[activeIndex - 1] : null;
   const nextLesson = activeIndex >= 0 && activeIndex < flatLessons.length - 1 ? flatLessons[activeIndex + 1] : null;
 
-  // Auto-select first lesson (or last accessed subject's first lesson) on load.
+  // Auto-select the resume lesson on load. Priority:
+  //   1. backend's lastAccessedSubjectId
+  //   2. first lesson of the first NOT-yet-complete subject (so a student
+  //      who finished 3 subjects lands on subject 4's lesson, not subject 1)
+  //   3. flatLessons[0]
   useEffect(() => {
     if (activeLessonId || flatLessons.length === 0) return;
     const lastSubjectId = progress?.lastAccessedSubjectId;
-    const candidate = lastSubjectId
-      ? flatLessons.find((f) => f.subjectId === lastSubjectId)
-      : flatLessons[0];
-    setActiveLessonId((candidate ?? flatLessons[0]).lesson.id);
-  }, [flatLessons, activeLessonId, progress?.lastAccessedSubjectId]);
+    if (lastSubjectId) {
+      const cand = flatLessons.find((f) => f.subjectId === lastSubjectId);
+      if (cand) { setActiveLessonId(cand.lesson.id); return; }
+    }
+    const firstIncomplete = flatLessons.find((f) => !effectiveCompletedSubjects.has(f.subjectId));
+    setActiveLessonId((firstIncomplete ?? flatLessons[0]).lesson.id);
+  }, [flatLessons, activeLessonId, progress?.lastAccessedSubjectId, effectiveCompletedSubjects]);
 
   // Track access whenever active subject changes (background, fire & forget).
   useEffect(() => {
@@ -226,12 +249,14 @@ export default function StudentCourseViewerPage() {
       if (subjectLessons.length === 0) return;
       const allDone = subjectLessons.every((l) => completedLessons.has(l.id));
       if (!allDone) return;
-      if (completedSubjectsApi.has(subjectId)) return;
+      // Skip if we already know this subject is complete (backend IDs OR
+      // fallback inference from completedCount).
+      if (effectiveCompletedSubjects.has(subjectId)) return;
       if (autoCompletedSubjects.current.has(subjectId)) return;
       autoCompletedSubjects.current.add(subjectId);
       markSubjectCompleteApi(subjectId, semesterId);
     },
-    [lessonsBySubject, completedLessons, completedSubjectsApi, markSubjectCompleteApi],
+    [lessonsBySubject, completedLessons, effectiveCompletedSubjects, markSubjectCompleteApi],
   );
 
   // Mark current lesson complete (used by both manual click and "Next").
@@ -288,11 +313,27 @@ export default function StudentCourseViewerPage() {
     if (nextLesson) setActiveLessonId(nextLesson.lesson.id);
   };
 
-  /* ── Progress percentage (lesson-based) ──────────────────────────── */
-
+  /* ── Progress percentage ─────────────────────────────────────────── */
+  // Backend is the source of truth: `/me/progress/courses/:id` returns
+  // completionPercent + completedCount + totalSubjects (same data the
+  // dashboard's "Continue Learning" card uses). We display those directly so
+  // both screens stay in sync. If the backend response hasn't arrived yet,
+  // we fall back to a session-level lesson tally so the bar reflects clicks
+  // the student has made in this session.
   const totalLessons = flatLessons.length;
-  const completedLessonsCount = flatLessons.filter((f) => completedLessons.has(f.lesson.id)).length;
-  const pct = totalLessons === 0 ? 0 : Math.round((completedLessonsCount / totalLessons) * 100);
+  const sessionCompletedLessons = flatLessons.filter((f) => completedLessons.has(f.lesson.id)).length;
+  const backendPct = progress?.completionPercent;
+  const pct =
+    backendPct != null
+      ? Math.round(backendPct)
+      : totalLessons === 0 ? 0 : Math.round((sessionCompletedLessons / totalLessons) * 100);
+  const completedCountDisplay = progress?.completedCount ?? sessionCompletedLessons;
+  const totalCountDisplay = progress?.totalSubjects ?? totalLessons;
+  const countUnit = progress != null ? "subjects" : "lessons";
+  // Keep `completedLessonsCount` as an alias the rest of the file already
+  // references in the lesson tree (tick marks etc.) — it's still the
+  // session-level Set count.
+  const completedLessonsCount = sessionCompletedLessons;
 
   /* ── Attachment download ─────────────────────────────────────────── */
 
@@ -418,7 +459,7 @@ export default function StudentCourseViewerPage() {
             <span className="pct">{pct}%</span>
           </div>
           <div style={{ fontFamily: "var(--font-body)", fontSize: 11, color: "var(--color-muted)", marginTop: 4 }}>
-            {completedLessonsCount} of {totalLessons} lessons completed
+            {completedCountDisplay} of {totalCountDisplay} {countUnit} completed
           </div>
         </div>
 
@@ -560,22 +601,52 @@ export default function StudentCourseViewerPage() {
                     </div>
                   </div>
                 ) : (
-                  /* Open (current) semester: render subjects + lessons */
+                  /* Open (current) semester: render subjects + lessons.
+                     Subjects after the first incomplete one are locked — the
+                     student must finish the current subject before moving on. */
+                  (() => {
+                    const orderedSubjects = (sem.subjects ?? [])
+                      .slice()
+                      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+                    const firstIncompleteIdx = orderedSubjects.findIndex(
+                      (sub) => !effectiveCompletedSubjects.has(sub.id),
+                    );
+                    return (
                   <>
-                    {(sem.subjects ?? []).map((sub) => {
+                    {orderedSubjects.map((sub, subIdx) => {
                       const subjectLessons = lessonsBySubject[sub.id] ?? [];
-                      const allDone = subjectLessons.length > 0 && subjectLessons.every((l) => completedLessons.has(l.id));
+                      const allDone =
+                        effectiveCompletedSubjects.has(sub.id) ||
+                        (subjectLessons.length > 0 && subjectLessons.every((l) => completedLessons.has(l.id)));
                       const hasActive = active?.subjectId === sub.id;
+                      const isLockedSubject =
+                        firstIncompleteIdx !== -1 && subIdx > firstIncompleteIdx;
                       return (
                         <div key={sub.id}>
                           <div
                             className={cn("subject", hasActive && "active", allDone && "completed", !allDone && !hasActive && "notstarted")}
-                            style={{ cursor: subjectLessons[0] ? "pointer" : "default" }}
-                            onClick={() => subjectLessons[0] && setActiveLessonId(subjectLessons[0].id)}
+                            style={{
+                              cursor: isLockedSubject || !subjectLessons[0] ? "not-allowed" : "pointer",
+                              opacity: isLockedSubject ? 0.55 : 1,
+                            }}
+                            onClick={() => {
+                              if (isLockedSubject) {
+                                dispatch(pushToast({
+                                  tone: "warning",
+                                  title: "Finish the current subject first",
+                                  message: "Complete the lessons in order before unlocking the next subject.",
+                                }));
+                                return;
+                              }
+                              if (subjectLessons[0]) setActiveLessonId(subjectLessons[0].id);
+                            }}
                           >
                             <span className="dot">
-                              <Icon name={allDone ? "check-circle" : hasActive ? "play-circle" : "play-circle"} size={14}
-                                style={{ color: allDone ? "var(--color-success-deep)" : "var(--color-accent)" }} />
+                              <Icon
+                                name={isLockedSubject ? "lock" : allDone ? "check-circle" : "play-circle"}
+                                size={14}
+                                style={{ color: isLockedSubject ? "var(--color-muted)" : allDone ? "var(--color-success-deep)" : "var(--color-accent)" }}
+                              />
                             </span>
                             {sub.title}
                           </div>
@@ -587,13 +658,24 @@ export default function StudentCourseViewerPage() {
                                 return (
                                   <div
                                     key={l.id}
-                                    onClick={() => setActiveLessonId(l.id)}
+                                    onClick={() => {
+                                      if (isLockedSubject) {
+                                        dispatch(pushToast({
+                                          tone: "warning",
+                                          title: "Finish the current subject first",
+                                          message: "Complete the lessons in order before unlocking the next subject.",
+                                        }));
+                                        return;
+                                      }
+                                      setActiveLessonId(l.id);
+                                    }}
                                     style={{
                                       display: "flex",
                                       alignItems: "center",
                                       gap: 8,
                                       padding: "7px 18px 7px 52px",
-                                      cursor: "pointer",
+                                      cursor: isLockedSubject ? "not-allowed" : "pointer",
+                                      opacity: isLockedSubject ? 0.55 : 1,
                                       fontFamily: "var(--font-body)",
                                       fontSize: 13,
                                       color: lessonActive ? "var(--color-primary)" : "var(--color-body-green)",
@@ -629,6 +711,8 @@ export default function StudentCourseViewerPage() {
                       </div>
                     )}
                   </>
+                    );
+                  })()
                 )}
               </div>
             );

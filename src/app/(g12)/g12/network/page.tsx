@@ -43,11 +43,16 @@ export default function G12NetworkPage() {
   const [page, setPage] = useState(0);
   const [promoting, setPromoting] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ uid: string; name: string } | null>(null);
+  // Demote confirmation — UI only; the role-mutation endpoint to strip Leader
+  // isn't open to G12 yet, so this currently just removes the row locally so
+  // the operator can see the effect.
+  const [demote, setDemote] = useState<{ uid: string; name: string } | null>(null);
+  const [demoteBusy, setDemoteBusy] = useState(false);
 
   // Cells in the G12's scope — used to count cells per leader.
   const { cells } = useCells();
 
-  // Fetch every Leader in the org via GET /users?role=leader.
+  // Fetch every Leader in the org via GET /users?roles=leader.
   useEffect(() => {
     if (!sessionUser) return;
     let cancelled = false;
@@ -57,7 +62,7 @@ export default function G12NetworkPage() {
         const collected: LeaderUser[] = [];
         let cursor: string | undefined;
         for (let i = 0; i < 20; i++) {
-          const params = new URLSearchParams({ role: "leader", limit: "100" });
+          const params = new URLSearchParams({ roles: "leader", limit: "100" });
           if (cursor) params.append("cursor", cursor);
           const data = await apiRequest<PagedResponse>(`/users?${params}`);
           collected.push(...(data.items ?? []));
@@ -104,6 +109,52 @@ export default function G12NetworkPage() {
   const safePage = Math.min(page, totalPages - 1);
   const rows = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
+  // Demote a leader via POST /users/:uid/demote (spec §4.10). G12 callers
+  // can only strip the `leader` role per the caller-role matrix. Backend
+  // updates Firebase Auth custom claims immediately; the demoted user
+  // sees the change at their next token refresh. After success we drop
+  // them from the local leaders directory so the operator sees the
+  // effect without waiting for a refetch.
+  const runDemote = async (uid: string) => {
+    setDemoteBusy(true);
+    try {
+      await apiRequest(`/users/${uid}/demote`, {
+        method: "POST",
+        body: { role: "leader" },
+      });
+      setAllLeaders((prev) => prev.filter((u) => u.uid !== uid));
+      dispatch(
+        pushToast({
+          tone: "success",
+          title: "Demoted to Member",
+          message:
+            "Leader role removed. They stay in their cells as a regular member; only the leader privileges are gone. They'll see the change after their next sign-in.",
+        }),
+      );
+      setDemote(null);
+    } catch (err) {
+      let title = "Demote failed";
+      let message: string | undefined;
+      if (err instanceof ApiRequestError) {
+        if (err.status === 403) {
+          title = "Not permitted";
+          message = err.message;
+        } else if (err.status === 404) {
+          title = "User not found";
+          message = "This leader may have already been removed.";
+        } else if (err.status === 400) {
+          title = "Invalid request";
+          message = err.message;
+        } else if (err.message) {
+          message = err.message;
+        }
+      }
+      dispatch(pushToast({ tone: "warning", title, message }));
+    } finally {
+      setDemoteBusy(false);
+    }
+  };
+
   const runPromote = async (uid: string) => {
     setPromoting(uid);
     try {
@@ -136,7 +187,7 @@ export default function G12NetworkPage() {
         <div>
           <h1>Leaders network</h1>
           <div className="greeting">
-            <b style={{ color: "#152A24" }}>{loading ? "…" : allLeaders.length}</b> leaders in your network.
+            <b style={{ color: "var(--color-primary)" }}>{loading ? "…" : allLeaders.length}</b> leaders in your network.
             Promote a Leader to G12 to extend their authority — roles are additive.
           </div>
         </div>
@@ -159,17 +210,17 @@ export default function G12NetworkPage() {
       <div className="tbl-card">
         <table className="tbl" style={{ tableLayout: "fixed", width: "100%" }}>
           <colgroup>
-            <col style={{ width: "36%" }} />
-            <col style={{ width: "28%" }} />
-            <col style={{ width: "14%" }} />
-            <col style={{ width: "22%" }} />
+            <col style={{ width: "30%" }} />
+            <col style={{ width: "24%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ minWidth: 260 }} />
           </colgroup>
           <thead>
             <tr>
               <th>Leader</th>
               <th>Email</th>
               <th>Cells</th>
-              <th style={{ textAlign: "right" }}>Promote</th>
+              <th style={{ textAlign: "right" }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -217,10 +268,22 @@ export default function G12NetworkPage() {
                   </td>
                   <td>{cellCount}</td>
                   <td style={{ textAlign: "right" }} title={isSuspended ? "Reactivate before promoting" : undefined}>
-                    <Button size="sm" icon="chevron-up" disabled={promoteDisabled}
-                      onClick={() => setConfirm({ uid: u.uid, name: fullName })}>
-                      {isThisRowPromoting ? "…" : "Promote to G12"}
-                    </Button>
+                    <div style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        icon="chevron-down"
+                        disabled={isSuspended || demoteBusy}
+                        onClick={() => setDemote({ uid: u.uid, name: fullName })}
+                        style={{ color: "var(--color-error)", borderColor: "var(--color-error)" }}
+                      >
+                        Demote
+                      </Button>
+                      <Button size="sm" icon="chevron-up" disabled={promoteDisabled}
+                        onClick={() => setConfirm({ uid: u.uid, name: fullName })}>
+                        {isThisRowPromoting ? "…" : "Promote to G12"}
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -228,7 +291,7 @@ export default function G12NetworkPage() {
           </tbody>
         </table>
 
-        {filtered.length > PAGE_SIZE && (
+        {filtered.length > 0 && (
           <div style={{
             display: "flex",
             justifyContent: "space-between",
@@ -243,6 +306,7 @@ export default function G12NetworkPage() {
           }}>
             <span>
               Showing <b>{safePage * PAGE_SIZE + 1}</b>–<b>{Math.min((safePage + 1) * PAGE_SIZE, filtered.length)}</b> of <b>{filtered.length}</b>
+              {totalPages > 1 && <> · Page <b>{safePage + 1}</b> of <b>{totalPages}</b></>}
             </span>
             <div style={{ display: "flex", gap: 8 }}>
               <Button size="sm" variant="secondary" icon="chevron-left" disabled={safePage === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
@@ -265,6 +329,18 @@ export default function G12NetworkPage() {
         confirmLabel="Yes, promote to G12"
         onConfirm={() => { if (confirm) runPromote(confirm.uid); }}
         onCancel={() => setConfirm(null)}
+      />
+
+      <ConfirmDialog
+        open={!!demote}
+        title={`Demote ${demote?.name ?? "this leader"}?`}
+        message={demote
+          ? `Removes the Cell Leader role from ${demote.name}. They stay as a Member (and Student, if applicable) and remain in any cells they were leading — only as a regular member. They can no longer create or edit cells, manage members, or file cell reports.`
+          : undefined}
+        confirmLabel="Yes, demote"
+        destructive
+        onConfirm={() => { if (demote) runDemote(demote.uid); }}
+        onCancel={() => setDemote(null)}
       />
     </div>
   );

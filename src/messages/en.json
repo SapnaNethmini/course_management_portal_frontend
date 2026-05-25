@@ -74,6 +74,7 @@
       "emailNotVerified": "Please verify your email address before continuing. Check your inbox for a verification link.",
       "authFailed": "Authentication failed. Please try again.",
       "inactive": "You were signed out due to inactivity. Please sign in again.",
+      "roleUpdated": "Your role was updated. Please sign in again to use your new permissions.",
       "accountNotSetUp": "This account was created by an admin. Please use the Forgot Password link to set your password and activate sign-in."
     },
     "register": {

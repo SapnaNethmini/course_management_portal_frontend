@@ -42,14 +42,15 @@ export function LoginForm() {
   const [formError, setFormError] = useState("");
   const [lockoutSeconds, setLockoutSeconds] = useState(0);
 
-  // Read ?reason=... set by FirebaseAuthListener / inactivity timer / 401 handler.
-  // V2 only has: suspended, inactive, expired.
+  // Read ?reason=... set by FirebaseAuthListener / inactivity timer /
+  // 401 handler / role-mismatch handler in request.ts.
   useEffect(() => {
     const reason = searchParams?.get("reason");
     if (!reason) return;
     if (reason === "suspended") setFormError(t("accountSuspended"));
     else if (reason === "inactive") setFormError(t("inactive"));
     else if (reason === "expired") setFormError(t("authFailed"));
+    else if (reason === "role-updated") setFormError(t("roleUpdated"));
   }, [searchParams, t]);
 
   const clearErrors = () => {

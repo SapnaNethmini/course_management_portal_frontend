@@ -230,6 +230,29 @@ async function executeRequest<T>(
       }
     }
 
+    // 403 with "Role 'X' is not permitted" — typically a stale-claims
+    // problem: the user was promoted/demoted on the server, but their
+    // current Firebase ID token still has the old `role` custom claim
+    // (tokens are cached for up to 1h). Sign them out and bounce to
+    // /login so they sign back in with a fresh token that carries the
+    // updated claims. The login banner explains what happened.
+    //
+    // Scope is narrow on purpose — we only match the exact backend
+    // message pattern so unrelated 403s (suspended account, scoped
+    // resource access denied, etc.) don't trigger a forced logout.
+    if (
+      res.status === 403 &&
+      err?.code === "FORBIDDEN" &&
+      typeof err?.message === "string" &&
+      /Role\s+['"][\w_-]+['"]\s+is\s+not\s+permitted/i.test(err.message) &&
+      typeof window !== "undefined" &&
+      isProtectedPath(window.location.pathname)
+    ) {
+      signOut(auth).catch(() => null);
+      tokenService.clear();
+      window.location.href = "/login?reason=role-updated";
+    }
+
     throw new ApiRequestError({
       code: err?.code ?? "UNKNOWN_ERROR",
       message: err?.message ?? `Request failed with status ${res.status}`,

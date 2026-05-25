@@ -128,11 +128,21 @@ export default function AdminCellDetailPage() {
     );
   }
 
-  const handleTransfer = (
+  const handleTransfer = async (
     selectedCellIds: string[],
     target: DirectoryUser,
     kind: "leader" | "g12",
   ) => {
+    // Identify the outgoing owner — the demote endpoint targets the user
+    // who currently holds the role on THIS cell (per the dialog, all selected
+    // cells share the same owner). Snapshot it BEFORE we apply local
+    // overrides since we'll mutate them next.
+    const outgoingUid = kind === "leader" ? cell?.leaderUid : cell?.g12LeaderUid;
+    const outgoingName = kind === "leader" ? cell?.leaderName : cell?.g12LeaderName;
+
+    // Apply local cell-ownership change first — keeps the UI snappy even if
+    // the demote call below is slow / fails. The cell-PATCH endpoint isn't
+    // wired here yet; only the demote API is integrated this round.
     setOverrides((prev) => {
       const next = { ...prev };
       for (const id of selectedCellIds) {
@@ -145,14 +155,54 @@ export default function AdminCellDetailPage() {
       }
       return next;
     });
-    dispatch(
-      pushToast({
+    setTransferDialog({ open: false, kind: "leader" });
+
+    // Strip the role from the outgoing owner via POST /users/:uid/demote
+    // (spec §4.10). admin / super_admin can demote student / leader / g12;
+    // 204 No Content on success; idempotent if the user no longer holds
+    // the role. Custom claims update immediately on the backend; the
+    // demoted user picks up the new claims at their next token refresh.
+    if (!outgoingUid) {
+      dispatch(pushToast({
         tone: "success",
         title: "Ownership transferred",
-        message: `${selectedCellIds.length} cell${selectedCellIds.length === 1 ? "" : "s"} now reports to ${fullName(target)}. Previous ${kind === "leader" ? "Cell Leader" : "G12"} demoted to Member. (UI only — backend pending.)`,
-      }),
-    );
-    setTransferDialog({ open: false, kind: "leader" });
+        message: `${selectedCellIds.length} cell${selectedCellIds.length === 1 ? "" : "s"} now under ${fullName(target)}. No previous owner to demote.`,
+      }));
+      return;
+    }
+
+    try {
+      await apiRequest(`/users/${outgoingUid}/demote`, {
+        method: "POST",
+        body: { role: kind },
+      });
+      dispatch(pushToast({
+        tone: "success",
+        title: "Ownership transferred & previous owner demoted",
+        message: `${selectedCellIds.length} cell${selectedCellIds.length === 1 ? "" : "s"} now under ${fullName(target)}. ${outgoingName ?? "Previous owner"} demoted to Member — they'll see the change at next sign-in.`,
+      }));
+    } catch (err) {
+      // Transfer UI is already applied — surface the demote failure
+      // separately so the operator knows the role wasn't stripped.
+      let title = "Owner demote failed";
+      let message =
+        "Ownership of the cell was updated in the UI, but the previous owner's role could not be removed.";
+      if (err instanceof ApiRequestError) {
+        if (err.status === 403) {
+          title = "Demote not permitted";
+          message = err.message || `Your role can't remove the '${kind}' role.`;
+        } else if (err.status === 404) {
+          title = "User not found";
+          message = "The previous owner could not be located.";
+        } else if (err.status === 400) {
+          title = "Demote validation failed";
+          message = err.message;
+        } else if (err.message) {
+          message = err.message;
+        }
+      }
+      dispatch(pushToast({ tone: "warning", title, message }));
+    }
   };
 
   return (

@@ -109,24 +109,50 @@ export default function G12NetworkPage() {
   const safePage = Math.min(page, totalPages - 1);
   const rows = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
-  // Demote a leader. UI only — the role-strip endpoint isn't open to G12 yet.
-  // After demote the user keeps Member (and Student, if they had it) and
-  // stays inside any cells they were leading as a regular member; they just
-  // lose the edit / create / file-report privileges. We drop them from the
-  // leaders directory locally so the operator sees the immediate effect.
+  // Demote a leader via POST /users/:uid/demote (spec §4.10). G12 callers
+  // can only strip the `leader` role per the caller-role matrix. Backend
+  // updates Firebase Auth custom claims immediately; the demoted user
+  // sees the change at their next token refresh. After success we drop
+  // them from the local leaders directory so the operator sees the
+  // effect without waiting for a refetch.
   const runDemote = async (uid: string) => {
     setDemoteBusy(true);
-    await new Promise((r) => setTimeout(r, 200));
-    setAllLeaders((prev) => prev.filter((u) => u.uid !== uid));
-    dispatch(
-      pushToast({
-        tone: "success",
-        title: "Demoted to Member",
-        message: "Stays in their cells as a regular member — only the leader privileges are removed. (UI only — role mutation backend pending.)",
-      }),
-    );
-    setDemoteBusy(false);
-    setDemote(null);
+    try {
+      await apiRequest(`/users/${uid}/demote`, {
+        method: "POST",
+        body: { role: "leader" },
+      });
+      setAllLeaders((prev) => prev.filter((u) => u.uid !== uid));
+      dispatch(
+        pushToast({
+          tone: "success",
+          title: "Demoted to Member",
+          message:
+            "Leader role removed. They stay in their cells as a regular member; only the leader privileges are gone. They'll see the change after their next sign-in.",
+        }),
+      );
+      setDemote(null);
+    } catch (err) {
+      let title = "Demote failed";
+      let message: string | undefined;
+      if (err instanceof ApiRequestError) {
+        if (err.status === 403) {
+          title = "Not permitted";
+          message = err.message;
+        } else if (err.status === 404) {
+          title = "User not found";
+          message = "This leader may have already been removed.";
+        } else if (err.status === 400) {
+          title = "Invalid request";
+          message = err.message;
+        } else if (err.message) {
+          message = err.message;
+        }
+      }
+      dispatch(pushToast({ tone: "warning", title, message }));
+    } finally {
+      setDemoteBusy(false);
+    }
   };
 
   const runPromote = async (uid: string) => {

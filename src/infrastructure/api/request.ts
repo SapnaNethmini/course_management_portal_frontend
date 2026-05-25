@@ -121,7 +121,7 @@ export async function apiRequest<T = unknown>(
     const promise = executeRequest<T>(
       path,
       { body, useAuth, headers, idempotencyKey, rest },
-      false,
+      {},
     ).finally(() => {
       inflightGets.delete(key);
     });
@@ -129,7 +129,7 @@ export async function apiRequest<T = unknown>(
     return promise;
   }
 
-  return executeRequest<T>(path, { body, useAuth, headers, idempotencyKey, rest }, false);
+  return executeRequest<T>(path, { body, useAuth, headers, idempotencyKey, rest }, {});
 }
 
 interface ExecuteOptions {
@@ -140,10 +140,37 @@ interface ExecuteOptions {
   rest: Omit<RequestInit, "body" | "headers">;
 }
 
+interface RetryState {
+  /** True after we've forced a Firebase token refresh and retried a 401. */
+  authRefreshed?: boolean;
+  /** True after we've already backed off and retried a 429 once. */
+  rateLimitRetried?: boolean;
+}
+
+/**
+ * Parse `Retry-After` per RFC 7231. The header is either:
+ *   - a number of seconds (most common), or
+ *   - an HTTP date (rare).
+ * Falls back to 1.5s if missing or unparseable. Caps the wait at 5s so the
+ * UI doesn't lock up if the server returns an absurd value.
+ */
+function parseRetryAfter(value: string | null): number {
+  if (!value) return 1500;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1000, 5000);
+  }
+  const dateMs = Date.parse(value);
+  if (!Number.isNaN(dateMs)) {
+    return Math.min(Math.max(dateMs - Date.now(), 0), 5000);
+  }
+  return 1500;
+}
+
 async function executeRequest<T>(
   path: string,
   opts: ExecuteOptions,
-  isRetry: boolean,
+  retryState: RetryState = {},
 ): Promise<T> {
   const { body, useAuth, headers, idempotencyKey, rest } = opts;
 
@@ -154,7 +181,7 @@ async function executeRequest<T>(
   };
 
   if (useAuth) {
-    const token = isRetry ? await tokenService.refresh() : await tokenService.get();
+    const token = retryState.authRefreshed ? await tokenService.refresh() : await tokenService.get();
     if (token) finalHeaders.Authorization = `Bearer ${token}`;
   }
 
@@ -170,6 +197,17 @@ async function executeRequest<T>(
 
   if (res.status === 204) return undefined as T;
 
+  // 429: bounded backoff + single retry BEFORE consuming the response body.
+  // Burst spikes (e.g. dashboard loading many cards at once) settle within a
+  // second; one quiet retry keeps the user from seeing a "Too many requests"
+  // toast for transient overage. Sustained overage still surfaces because
+  // we don't loop forever — at most one retry per request.
+  if (res.status === 429 && !retryState.rateLimitRetried) {
+    const waitMs = parseRetryAfter(res.headers.get("Retry-After"));
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    return executeRequest<T>(path, opts, { ...retryState, rateLimitRetried: true });
+  }
+
   const json = (await res.json().catch(() => ({}))) as
     | { error?: { code?: string; message?: string; details?: Record<string, string[]> }; requestId?: string }
     | T;
@@ -180,8 +218,8 @@ async function executeRequest<T>(
     // 401: token may have just expired between cache hits — try once with a
     // forced refresh before giving up. Second failure means the session is
     // genuinely revoked (suspended account, server-side logout, etc.).
-    if (res.status === 401 && useAuth && !isRetry) {
-      return executeRequest<T>(path, opts, true);
+    if (res.status === 401 && useAuth && !retryState.authRefreshed) {
+      return executeRequest<T>(path, opts, { ...retryState, authRefreshed: true });
     }
 
     if (res.status === 401) {

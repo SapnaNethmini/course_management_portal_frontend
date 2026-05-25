@@ -9,11 +9,12 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useCell, useCellMembers } from "@/application/hooks/useCell";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
 import { apiRequest } from "@/infrastructure/api/request";
+import { cellMemberSearchRoles } from "@/lib/cellMemberSearchRoles";
 
 /**
  * Cell Members page — Leader / G12 / Admin only.
  *
- * Add members: typeahead `GET /users?name=<prefix>&limit=20` → select →
+ * Add members: typeahead `GET /users?search=<prefix>&limit=20` → select →
  * `POST /cells/:id/members { userUids }`. Backend auto-scopes Leader/G12
  * callers to approved, non-admin users.
  *
@@ -62,6 +63,8 @@ export default function CellMembersPage() {
   const cellId = (params?.cellId as string) ?? "";
   const user = useAppSelector((s) => s.session.user);
   const canEdit = (user?.roles?.includes("leader") || user?.roles?.includes("g12") || user?.roles?.includes("super_admin") || user?.roles?.includes("admin")) ?? false;
+  const roleFilter = cellMemberSearchRoles(user?.roles);
+  const roleFilterKey = (roleFilter ?? []).join(",");
 
   const { cell, loading, refetch } = useCell(cellId || undefined);
   const { busy, addMembers, removeMember } = useCellMembers(cellId || undefined);
@@ -90,10 +93,11 @@ export default function CellMembersPage() {
         const titleCase = term.charAt(0).toUpperCase() + term.slice(1).toLowerCase();
         const variants = Array.from(new Set([term, titleCase]));
         const responses = await Promise.all(
-          variants.map((v) =>
-            apiRequest<unknown>(`/users?${new URLSearchParams({ name: v, limit: "20" })}`)
-              .catch(() => null),
-          ),
+          variants.map((v) => {
+            const qs = new URLSearchParams({ search: v, limit: "20" });
+            if (roleFilter && roleFilter.length > 0) qs.set("roles", roleFilter.join(","));
+            return apiRequest<unknown>(`/users?${qs}`).catch(() => null);
+          }),
         );
         if (cancelled) return;
         const seen = new Set<string>();
@@ -106,11 +110,16 @@ export default function CellMembersPage() {
           }
         }
         const memberUids = new Set(members.map((m) => m.uid));
+        const allowed = roleFilter && roleFilter.length > 0 ? new Set(roleFilter) : null;
         setResults(
           merged.filter((u) => {
             if (memberUids.has(u.uid)) return false;
             const roles = u.roles ?? [];
-            return !roles.includes("admin") && !roles.includes("super_admin");
+            if (roles.includes("admin") || roles.includes("super_admin")) return false;
+            // Defence-in-depth: drop results whose roles don't intersect the
+            // caller's allow-list (when the backend ignored the `roles` param).
+            if (allowed && roles.length > 0 && !roles.some((r) => allowed.has(r))) return false;
+            return true;
           }),
         );
       } catch {
@@ -121,7 +130,7 @@ export default function CellMembersPage() {
     }, 250);
     return () => { cancelled = true; clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [search, roleFilterKey]);
 
   // Toggle user into the staged "selected" list. Chips appear below the
   // search bar so the user can pick several before clicking "Add members".

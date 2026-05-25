@@ -20,6 +20,13 @@ interface Props {
   open: boolean;
   /** UIDs already in the cell — these are filtered out of the suggestion list. */
   existingUids?: string[];
+  /**
+   * Constrain the directory search to specific roles (e.g. ["member"] for a
+   * Leader, ["member","leader"] for a G12). Omitting it disables the filter.
+   * Until the backend scopes /users for Leader/G12 callers, this is appended
+   * as a `roles=<csv>` query param and ALSO applied to results client-side.
+   */
+  roleFilter?: string[] | null;
   busy?: boolean;
   onCancel: () => void;
   onConfirm: (uids: string[]) => void;
@@ -30,7 +37,7 @@ interface Props {
  * Calls GET /users?search=&limit=20 — debounced 250 ms — and lets the caller
  * pick one or many users to add via POST /cells/:id/members.
  */
-export function AddMemberDialog({ open, existingUids = [], busy, onCancel, onConfirm }: Props) {
+export function AddMemberDialog({ open, existingUids = [], roleFilter, busy, onCancel, onConfirm }: Props) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<DirectoryUser[]>([]);
   const [loading, setLoading] = useState(false);
@@ -40,6 +47,9 @@ export function AddMemberDialog({ open, existingUids = [], busy, onCancel, onCon
   // would otherwise cancel the in-flight fetch mid-flight via the effect cleanup.
   const existingKey = existingUids.join("|");
   const existingSet = useMemo(() => new Set(existingUids), [existingKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Same stabilisation for roleFilter.
+  const roleFilterKey = (roleFilter ?? []).join(",");
 
   useEffect(() => {
     if (!open) {
@@ -56,16 +66,17 @@ export function AddMemberDialog({ open, existingUids = [], busy, onCancel, onCon
     setLoading(true);
     const timer = setTimeout(async () => {
       try {
-        // V2 backend: case-SENSITIVE firstName prefix via `?name=`. To handle
+        // V2 backend: case-SENSITIVE firstName prefix via `?search=`. To handle
         // mixed-case data ("Sapna" vs "samantha") we fan out two requests in
         // parallel — original and Title-Case — then dedupe by uid.
         const titleCase = term.charAt(0).toUpperCase() + term.slice(1).toLowerCase();
         const variants = Array.from(new Set([term, titleCase]));
         const responses = await Promise.all(
-          variants.map((v) =>
-            apiRequest<unknown>(`/users?${new URLSearchParams({ name: v, limit: "20" })}`)
-              .catch(() => null),
-          ),
+          variants.map((v) => {
+            const qs = new URLSearchParams({ search: v, limit: "20" });
+            if (roleFilter && roleFilter.length > 0) qs.set("roles", roleFilter.join(","));
+            return apiRequest<unknown>(`/users?${qs}`).catch(() => null);
+          }),
         );
         if (cancelled) return;
 
@@ -111,7 +122,16 @@ export function AddMemberDialog({ open, existingUids = [], busy, onCancel, onCon
         const safe = items.filter((u) => {
           if (!u.uid) return false;
           const roles = u.roles ?? [];
-          return !roles.includes("admin") && !roles.includes("super_admin");
+          if (roles.includes("admin") || roles.includes("super_admin")) return false;
+          // Defence-in-depth: if the backend ignored ?roles=, still respect
+          // the caller's intent so a Leader never sees a g12 / leader-only
+          // result. Empty/missing role array is allowed through to keep
+          // backward compatibility with legacy member records.
+          if (roleFilter && roleFilter.length > 0 && roles.length > 0) {
+            const allowed = new Set(roleFilter);
+            if (!roles.some((r) => allowed.has(r))) return false;
+          }
+          return true;
         });
         setResults(safe);
       } catch (err) {
@@ -122,7 +142,8 @@ export function AddMemberDialog({ open, existingUids = [], busy, onCancel, onCon
       }
     }, 250);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [q, open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, open, roleFilterKey]);
 
   // Filter out users already in this cell at render time (cheap; no refetch).
   const visibleResults = useMemo(

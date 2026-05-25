@@ -11,15 +11,15 @@ interface Props {
 }
 
 const REGISTER_STEPS = [
-  { ico: "edit-3",     title: "Fill in your details",         body: "Name, email and a secure password — takes under a minute." },
-  { ico: "clock",      title: "Admin reviews your request",   body: "Your application is checked and approved within 24 hours." },
-  { ico: "play-circle",title: "Start learning immediately",   body: "Access structured courses, labs and progress tracking." },
+  { ico: "edit-3",     title: "Fill in your details",            body: "Name, email and a secure password — takes under a minute." },
+  { ico: "user-plus",  title: "You're a Member immediately",     body: "No waiting — you're signed in and part of TCCR from the first save." },
+  { ico: "play-circle",title: "Apply for a course or join a cell", body: "Become a Student to browse the Bible School catalogue, or wait for your leader to add you to a cell." },
 ];
 
 const REGISTER_FEATURES = [
-  { ico: "layers",     label: "Structured course plans" },
-  { ico: "trending-up",label: "Real-time progress tracking" },
-  { ico: "terminal",   label: "Browser-based hands-on labs" },
+  { ico: "book-open",   label: "Bible School course catalogue" },
+  { ico: "users",       label: "Cell Groups & weekly reports" },
+  { ico: "trending-up", label: "Track your course progress" },
 ];
 
 export function AuthSplit({ children, variant = "login" }: Props) {
@@ -40,7 +40,7 @@ export function AuthSplit({ children, variant = "login" }: Props) {
         {variant === "login" ? (
           <>
             <div style={{ position: "relative" }}>
-              <Eyebrow dark>Welcome to EduPath</Eyebrow>
+              <Eyebrow dark>Welcome to TCCR</Eyebrow>
               <h2 style={{ marginTop: 18 }}>
                 Pick up where you <span className="accent">left off</span>.
               </h2>
@@ -80,13 +80,13 @@ export function AuthSplit({ children, variant = "login" }: Props) {
         ) : (
           <>
             <div style={{ position: "relative" }}>
-              <Eyebrow dark>Join EduPath</Eyebrow>
+              <Eyebrow dark>Join TCCR</Eyebrow>
               <h2 style={{ marginTop: 18 }}>
                 Your <span className="accent">learning journey</span> starts here.
               </h2>
               <p>
-                Get access to structured programmes in software engineering, machine learning
-                and data analytics — built for working professionals.
+                Join the TCCR community — enrol in Bible School courses, find your cell group
+                and stay connected with leaders from your first sign-in.
               </p>
             </div>
 

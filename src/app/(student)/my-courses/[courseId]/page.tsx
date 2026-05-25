@@ -133,6 +133,30 @@ export default function StudentCourseViewerPage() {
     } catch { /* ignore */ }
   }, [progressKey, completedLessons, restoredFromStorage]);
 
+  /* ── Backfill lesson completion from backend subject completion ──── */
+  // When a subject is marked complete on the backend, every lesson in it
+  // must have been done — that's the only way the UI completes a subject.
+  // Reflecting that into local state means the progress bar + lesson ticks
+  // restore correctly after sign-in on a fresh browser / device where
+  // localStorage is empty. Without this the user sees 0% even though they
+  // finished entire subjects.
+  useEffect(() => {
+    if (completedSubjectsApi.size === 0) return;
+    setCompletedLessons((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const subjectId of completedSubjectsApi) {
+        for (const l of lessonsBySubject[subjectId] ?? []) {
+          if (!next.has(l.id)) {
+            next.add(l.id);
+            changed = true;
+          }
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [completedSubjectsApi, lessonsBySubject]);
+
   /* ── Fetch lessons for every subject in parallel (one call per subject) ── */
 
   useEffect(() => {
@@ -560,22 +584,52 @@ export default function StudentCourseViewerPage() {
                     </div>
                   </div>
                 ) : (
-                  /* Open (current) semester: render subjects + lessons */
+                  /* Open (current) semester: render subjects + lessons.
+                     Subjects after the first incomplete one are locked — the
+                     student must finish the current subject before moving on. */
+                  (() => {
+                    const orderedSubjects = (sem.subjects ?? [])
+                      .slice()
+                      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+                    const firstIncompleteIdx = orderedSubjects.findIndex(
+                      (sub) => !completedSubjectsApi.has(sub.id),
+                    );
+                    return (
                   <>
-                    {(sem.subjects ?? []).map((sub) => {
+                    {orderedSubjects.map((sub, subIdx) => {
                       const subjectLessons = lessonsBySubject[sub.id] ?? [];
-                      const allDone = subjectLessons.length > 0 && subjectLessons.every((l) => completedLessons.has(l.id));
+                      const allDone =
+                        completedSubjectsApi.has(sub.id) ||
+                        (subjectLessons.length > 0 && subjectLessons.every((l) => completedLessons.has(l.id)));
                       const hasActive = active?.subjectId === sub.id;
+                      const isLockedSubject =
+                        firstIncompleteIdx !== -1 && subIdx > firstIncompleteIdx;
                       return (
                         <div key={sub.id}>
                           <div
                             className={cn("subject", hasActive && "active", allDone && "completed", !allDone && !hasActive && "notstarted")}
-                            style={{ cursor: subjectLessons[0] ? "pointer" : "default" }}
-                            onClick={() => subjectLessons[0] && setActiveLessonId(subjectLessons[0].id)}
+                            style={{
+                              cursor: isLockedSubject || !subjectLessons[0] ? "not-allowed" : "pointer",
+                              opacity: isLockedSubject ? 0.55 : 1,
+                            }}
+                            onClick={() => {
+                              if (isLockedSubject) {
+                                dispatch(pushToast({
+                                  tone: "warning",
+                                  title: "Finish the current subject first",
+                                  message: "Complete the lessons in order before unlocking the next subject.",
+                                }));
+                                return;
+                              }
+                              if (subjectLessons[0]) setActiveLessonId(subjectLessons[0].id);
+                            }}
                           >
                             <span className="dot">
-                              <Icon name={allDone ? "check-circle" : hasActive ? "play-circle" : "play-circle"} size={14}
-                                style={{ color: allDone ? "var(--color-success-deep)" : "var(--color-accent)" }} />
+                              <Icon
+                                name={isLockedSubject ? "lock" : allDone ? "check-circle" : "play-circle"}
+                                size={14}
+                                style={{ color: isLockedSubject ? "var(--color-muted)" : allDone ? "var(--color-success-deep)" : "var(--color-accent)" }}
+                              />
                             </span>
                             {sub.title}
                           </div>
@@ -587,13 +641,24 @@ export default function StudentCourseViewerPage() {
                                 return (
                                   <div
                                     key={l.id}
-                                    onClick={() => setActiveLessonId(l.id)}
+                                    onClick={() => {
+                                      if (isLockedSubject) {
+                                        dispatch(pushToast({
+                                          tone: "warning",
+                                          title: "Finish the current subject first",
+                                          message: "Complete the lessons in order before unlocking the next subject.",
+                                        }));
+                                        return;
+                                      }
+                                      setActiveLessonId(l.id);
+                                    }}
                                     style={{
                                       display: "flex",
                                       alignItems: "center",
                                       gap: 8,
                                       padding: "7px 18px 7px 52px",
-                                      cursor: "pointer",
+                                      cursor: isLockedSubject ? "not-allowed" : "pointer",
+                                      opacity: isLockedSubject ? 0.55 : 1,
                                       fontFamily: "var(--font-body)",
                                       fontSize: 13,
                                       color: lessonActive ? "var(--color-primary)" : "var(--color-body-green)",
@@ -629,6 +694,8 @@ export default function StudentCourseViewerPage() {
                       </div>
                     )}
                   </>
+                    );
+                  })()
                 )}
               </div>
             );

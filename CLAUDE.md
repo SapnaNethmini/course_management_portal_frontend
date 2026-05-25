@@ -8,7 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run build` — production build
 - `npm run start` — run the production build
 - `npm run lint` — Next.js / ESLint (config extends `next/core-web-vitals`; ignores `src/ui_structure/**`)
-- `npm run type-check` — `tsc --noEmit` (no test runner is wired up; the `tests/` tree is empty scaffolding)
+- `npm run type-check` — `tsc --noEmit`
+- `npm test` — vitest run (config: `vitest.config.ts`, setup: `tests/setup.ts`, jsdom env)
+- `npm run test:watch` — vitest in watch mode
+
+Tests live under `tests/v02/sprint-NN/` (e.g. `sprint-01/sessionSlice.test.ts`, `sprint-01/useRoles.test.tsx`, `sprint-04/restoreCourse.test.ts`, `sprint-06/cells.test.ts`, `sprint-07/cellReports.test.ts`). The `tests/{unit,integration,e2e}/` folders are empty scaffolding.
 
 Path alias: `@/*` → `src/*` (set in `tsconfig.json`). The `src/ui_structure/**` tree is excluded from the TS compile.
 
@@ -106,16 +110,17 @@ This is the **Next.js 14 (App Router)** frontend for TCCR. It is the **presentat
 | Mock data (`src/lib/mock/`) | ✅ Done | V1: `students`, `courses`, `users`, `admins`, `notifications`, `registrations`, `audit`. V2: `cells`, `cellReports`, `roleRequests`, `batches`, `tccrDirectory` |
 | Domain layer (`src/domain/`) | ✅ Partial | Has `enums/`, `schemas/`, `types/`, `utils/` directories with content; types still mostly live inline in hooks |
 | Infrastructure (`src/infrastructure/`) | ✅ Done | `api/` (Axios + apiRequest), `auth/` (helpers), `firebase/` (config + initialised SDK + getIdToken), `storage/` |
-| Application API hooks (`src/application/hooks/`) | ✅ Done | 12 integrated hooks: `useCourses`, `useCourse`, `useEnrollments`, `useProgress` / `useCourseProgress`, `useAdminCourseProgress`, `useNotifications`, `useRegistrationQueue`, `useAdminEnrollmentQueue`, `useEnrollmentRequests`, `useProfile`, `useApprovalQueue`, `useSessionUser` |
+| Application API hooks (`src/application/hooks/`) | ✅ Done | 25 integrated hooks. V1: `useCourses`, `useCourse`, `useEnrollments`, `useProgress` / `useCourseProgress`, `useAdminCourseProgress`, `useNotifications`, `useRegistrationQueue`, `useAdminEnrollmentQueue`, `useEnrollmentRequests`, `useProfile`, `useApprovalQueue`, `useSessionUser`. V2: `useRoles`, `useAnalytics`, `useAuditLog`, `useBatches`, `useCell`, `useCells`, `useCellJoinRequests`, `useCellReports`, `useReportAggregates`, `useRoleRequests`, `useRoleRequestQueue`, `useIdempotencyKey`, `useInactivityTimer`, `useSidebarCounts` |
 | Auth / role guards | ✅ Done | `<AuthGuard allowedRoles={Role[]}>` in `src/components/auth/AuthGuard.tsx`; `FirebaseAuthListener` handles sign-in / token / status / redirect |
-| **V2: Member surfaces (`/home`, `/apply/...`, `/my-requests`, `/my-cells`)** | 🚧 In progress (branch 2) | UI only |
-| **V2: Cell Groups (Leader + G12)** | 🚧 Planned (branch 3) | UI only |
-| **V2: Admin role-requests + course Batches** | 🚧 Planned (branch 4) | UI only |
-| **V2: Super-admin user-roles management + audit timeline** | 🚧 Planned (branch 5) | UI only |
-| **V2: i18n (si / ta / en)** | ⏳ Deferred | `LanguageSwitcher` dropdown is in place as a visual control; actual translation pipeline (`next-intl`, message catalogues, `/[locale]/` route prefix) is a later phase |
-| **V2: Federated sign-in (Google + Apple)** | ⏳ UI only | Buttons + toast stub on `/login` and `/register`. Real `signInWithPopup` wiring is deferred to backend work |
+| **V2: Member surfaces (`/home`, `/apply/...`, `/my-requests`, `/my-cells`)** | ✅ Done | `src/app/(authed)/{home,apply,my-cells,my-requests,notifications,profile,school}` shipped |
+| **V2: Cell Groups (Leader + G12)** | ✅ Done | `src/app/(leader)/{cells,leader}`, `src/app/(g12)/g12`, `src/components/cells/*` populated |
+| **V2: Admin role-requests + course Batches** | ✅ Done | `src/app/admin/cells/`, `useBatches`, `useRoleRequestQueue` |
+| **V2: Super-admin user-roles management + audit timeline** | ✅ Done | `src/app/super-admin/cells/`, `useAuditLog` |
+| **V2: i18n (si / ta / en)** | ✅ Partial | `next-intl` v4 installed, `src/messages/{en,si,ta}.json` live, `localeSlice` mounted. **Still pending:** locale-prefixed URLs — `src/app/` is flat, no `[locale]/` segment yet |
+| **V2: Federated sign-in (Google + Apple)** | ✅ Done | Wired in commit `98144e1` (federated nav fix, signup cleanup) |
+| One Next API route | ✅ | `src/app/api/health/` — only server route in the app |
 
-**Installed (V1):** `firebase` (v12), `@reduxjs/toolkit`, `react-redux`, `redux-persist`, `next-themes`, `lucide-react`, `clsx`, `tailwind-merge`, `@tailwindcss/forms`, `@tailwindcss/typography`. **Not yet installed but called for by the V2 blueprint:** `axios` (the existing `apiRequest` uses fetch), `react-hook-form`, `zod`, `@hookform/resolvers`, `next-intl`, `recharts` (V2 charts are hand-rolled SVG to avoid the dep), `uuid`, `msw`, `playwright`. Do not assume any of these are available — add them explicitly if a future feature needs them.
+**Installed:** `firebase` (v12), `@reduxjs/toolkit`, `react-redux`, `redux-persist`, `next-themes`, `lucide-react`, `clsx`, `tailwind-merge`, `react-hook-form`, `zod`, `@hookform/resolvers`, `next-intl`, plus `@tailwindcss/forms` / `@tailwindcss/typography`. **Test stack:** `vitest`, `@vitejs/plugin-react`, `@testing-library/react`, `@testing-library/jest-dom`, `jsdom`. **Still not installed:** `axios` (the existing `apiRequest` uses `fetch`), `recharts` (V2 charts are hand-rolled SVG), `uuid`, `msw`, `playwright`. Do not assume any of these are available — add them explicitly if a future feature needs them.
 
 ### Clean Architecture layers (intended)
 
@@ -156,16 +161,17 @@ src/app/[locale]/
 
 Role match is **union**: a user with `["member","leader"]` can hit any `(authed)` and `(leader)` page. `super_admin` expands to `[super_admin, admin]` for inheritance. Cell-report **creation** explicitly excludes plain `admin` (SRS §9.3).
 
-Nav config is in `src/components/layout/RoleNav.ts` (V1 has `STUDENT_NAV`, `ADMIN_NAV`, `SUPERADMIN_NAV` — will need `MEMBER_NAV`, `LEADER_NAV`, `G12_NAV` added). The shared shell is `components/layout/AppShell.tsx` (Sidebar + TopNav + Toaster + footer). Feature directories under `src/components/`: V1 has `auth/`, `course/`, `enrollment/`, `admin/` with files; `student/`, `notifications/`, `progress/` are empty. V2 will add `cells/`, `role-requests/`, `analytics/`, `audit/`, `user/`, `i18n/`.
+Nav config is in `src/components/layout/RoleNav.ts` — exports `STUDENT_NAV`, `ADMIN_NAV`, `SUPERADMIN_NAV`, `MEMBER_NAV`, `LEADER_NAV`, `G12_NAV`. The shared shell is `components/layout/AppShell.tsx` (Sidebar + TopNav + Toaster + footer). Feature directories under `src/components/` (all populated): `admin/`, `analytics/`, `auth/`, `cells/`, `course/`, `enrollment/`, `layout/`, `member/`, `notifications/`, `profile/`, `progress/`, `student/`, `ui/`, `user/`.
 
 ### State management
 
-Redux Toolkit store at `src/application/store/`. `RootLayout` mounts `Providers` (`src/app/providers.tsx`) which wraps the app in `<Provider store={store}>`. Today two slices exist:
+Redux Toolkit store at `src/application/store/`. `RootLayout` mounts `Providers` (`src/app/providers.tsx`) which wraps the app in `<Provider store={store}>`. Slices today:
 
 - `uiSlice` — toasts (with `nanoid` ids), modal kind+payload, sidebar collapsed flag
-- `sessionSlice` — current `user` + scalar `role` (`student | admin | super_admin`), seeded with a demo student so role-aware screens render without auth
+- `sessionSlice` — current `user` + `roles: Role[]` + `activeRole` (persisted to localStorage as `edupath.activeRole.${uid}`). Note: the V2 blueprint envisioned renaming this to `authSlice`; it was kept as `sessionSlice` in code.
+- `localeSlice` — current locale, used by `next-intl` plumbing
 
-**V2 changes coming:** `sessionSlice` becomes `authSlice` storing `roles: Role[]` and `preferredLanguage`; add `localeSlice`, `notificationSlice`; introduce `useRoles()` (returns `{ roles, effective, primary, isMember, isStudent, isLeader, isG12, isAdmin, isSuperAdmin, can(required[]) }`) and `useHasRole()`. RTK Query is **not yet added**; blueprint endpoint groups will be: `authApi`, `usersApi`, `roleRequestsApi`, `coursesApi`, `batchesApi`, `enrollmentsApi`, `progressApi`, `cellsApi`, `cellReportsApi`, `analyticsApi`, `notificationsApi`, `auditApi`. Cell-report POSTs need `X-Idempotency-Key` (uuid) — there's a planned `useIdempotencyKey()` hook for this.
+`useRoles()` is implemented at `src/application/hooks/useRoles.ts` and returns the role-predicates + `can([...])` helper as planned. RTK Query is **not added** — all data hooks are hand-rolled around `apiRequest` (fetch). `useIdempotencyKey()` exists and is used by cell-report POSTs (`X-Idempotency-Key`).
 
 Existing hooks: `useAppDispatch`, `useAppSelector`, `useApprovalQueue` (generic optimistic approve/reject + bulk-select state used by registrations and enrollments queues — dispatches a toast on action). Data still comes from `src/lib/mock/*.ts`.
 

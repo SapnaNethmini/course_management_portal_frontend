@@ -44,7 +44,7 @@ export default function NewCellPage() {
   const [g12Searching, setG12Searching] = useState(false);
   const [selectedG12, setSelectedG12] = useState<G12Candidate | null>(null);
 
-  // Real-time typeahead: GET /users?role=g12&name=<prefix> with case fan-out.
+  // Real-time typeahead: GET /users?roles=g12&search=<prefix> with case fan-out.
   // Same pattern used by AddMemberDialog and AttendanceEditor.
   useEffect(() => {
     if (isG12) return; // G12 creators use their own UID; no picker needed.
@@ -58,7 +58,7 @@ export default function NewCellPage() {
         const variants = Array.from(new Set([term, titleCase]));
         const responses = await Promise.all(
           variants.map((v) =>
-            apiRequest<unknown>(`/users?${new URLSearchParams({ role: "g12", name: v, limit: "20" })}`)
+            apiRequest<unknown>(`/users?${new URLSearchParams({ roles: "g12", search: v, limit: "20" })}`)
               .catch(() => null),
           ),
         );

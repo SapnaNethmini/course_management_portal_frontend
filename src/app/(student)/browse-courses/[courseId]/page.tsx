@@ -25,6 +25,8 @@ import { useEnrollments } from "@/application/hooks/useEnrollments";
 import { useBatches } from "@/application/hooks/useBatches";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
 import { apiRequest } from "@/infrastructure/api/request";
+import { ProfileIncompleteDialog } from "@/components/profile/ProfileIncompleteDialog";
+import { isProfileExtrasComplete, loadProfileExtras } from "@/lib/profileExtras";
 
 interface LessonTitle { id: string; title: string }
 
@@ -46,6 +48,8 @@ export default function BrowseCourseDetailPage() {
   const params = useParams<{ courseId: string }>();
   const { getStatus, getEnrollmentForCourse, enroll } = useEnrollments();
   const [enrolling, setEnrolling] = useState(false);
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const [profileChecked, setProfileChecked] = useState(false);
   const sessionUser = useAppSelector((s) => s.session.user);
 
   const { course, loading, error } = useCourse(sessionUser ? params.courseId : undefined);
@@ -124,11 +128,19 @@ export default function BrowseCourseDetailPage() {
     }, 0);
   }, 0);
 
-  const handleRequest = async () => {
+  const performEnroll = async () => {
     setEnrolling(true);
     // V2: POST /enrollments requires { courseId, batchId }
     await enroll(course.id, selectedBatch?.id);
     setEnrolling(false);
+  };
+
+  const handleRequest = async () => {
+    if (!profileChecked && !isProfileExtrasComplete(loadProfileExtras(sessionUser?.uid))) {
+      setProfileDialogOpen(true);
+      return;
+    }
+    await performEnroll();
   };
 
   return (
@@ -459,6 +471,16 @@ export default function BrowseCourseDetailPage() {
           </Button>
         </div>
       </div>
+
+      <ProfileIncompleteDialog
+        open={profileDialogOpen}
+        onSkip={() => {
+          setProfileDialogOpen(false);
+          setProfileChecked(true);
+          void performEnroll();
+        }}
+        onClose={() => setProfileDialogOpen(false)}
+      />
     </div>
   );
 }

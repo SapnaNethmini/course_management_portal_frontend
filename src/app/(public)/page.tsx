@@ -4,14 +4,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 import { Icon } from "@/components/ui/Icon";
 import { TccrWordmark } from "@/components/ui/TccrWordmark";
 import { FloatingNav } from "@/components/layout/FloatingNav";
 import { apiRequest } from "@/infrastructure/api/request";
-import { avatarUrl } from "@/lib/kit";
 
 /**
  * TCCR public landing page. Mirrors
@@ -54,23 +52,32 @@ export default function PublicHomePage() {
   const goRegister = () => router.push("/register");
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
-  // Live stats — backend may or may not respond. Falls back to the static
-  // copy from the prototype if either endpoint 401/403s.
-  const [stats, setStats] = useState<{ members: number | null; courses: number | null }>({
-    members: null,
-    courses: null,
-  });
+  // Live stats — fetched anonymously. Each call is wrapped so a 401/403 for
+  // any one endpoint doesn't drop the others. Anything that returns
+  // `{ total }` populates its slot; the strip below renders only slots that
+  // received a real number.
+  const [stats, setStats] = useState<{
+    students: number | null;
+    courses:  number | null;
+    cells:    number | null;
+    leaders:  number | null;
+  }>({ students: null, courses: null, cells: null, leaders: null });
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [usersRes, coursesRes] = await Promise.allSettled([
-        apiRequest<{ total: number }>(`/users?role=student&limit=1`, { auth: false }),
+      const [studentsRes, coursesRes, cellsRes, leadersRes] = await Promise.allSettled([
+        apiRequest<{ total: number }>(`/users?roles=student&limit=1`,  { auth: false }),
         apiRequest<{ total: number }>(`/courses?state=published&limit=1`, { auth: false }),
+        apiRequest<{ total: number }>(`/cells?state=active&limit=1`,  { auth: false }),
+        apiRequest<{ total: number }>(`/users?roles=leader&limit=1`,  { auth: false }),
       ]);
       if (cancelled) return;
       setStats({
-        members: usersRes.status === "fulfilled" ? usersRes.value.total : null,
-        courses: coursesRes.status === "fulfilled" ? coursesRes.value.total : null,
+        students: studentsRes.status === "fulfilled" ? studentsRes.value.total : null,
+        courses:  coursesRes.status  === "fulfilled" ? coursesRes.value.total  : null,
+        cells:    cellsRes.status    === "fulfilled" ? cellsRes.value.total    : null,
+        leaders:  leadersRes.status  === "fulfilled" ? leadersRes.value.total  : null,
       });
     })();
     return () => { cancelled = true; };
@@ -100,11 +107,6 @@ export default function PublicHomePage() {
               </Button>
             </div>
             <div className="hero-proof">
-              <div className="stack">
-                {[5, 14, 32, 47].map((n) => (
-                  <Avatar key={n} src={avatarUrl(n)} size="sm" />
-                ))}
-              </div>
               <span>
                 <b style={{ color: "#fff" }}>{t("hero.proofStat")}</b> {t("hero.proofSuffix")}
               </span>
@@ -117,22 +119,61 @@ export default function PublicHomePage() {
       </section>
 
       {/* ─── STATS strip ────────────────────────────────────────────── */}
+      {/* Two kinds of stats here. (1) Live counts from public API endpoints
+          — only render when the call succeeds (no invented numbers if the
+          endpoint is auth-gated or down). (2) Platform-fact stats — fixed,
+          honest properties of TCCR itself (number of modules, supported
+          languages, cell-group types). These render unconditionally so the
+          strip is always populated even when the API responds with nothing. */}
       <section className="section section--white" style={{ paddingTop: 64, paddingBottom: 64 }}>
         <div className="container-x">
           <div className="stats">
+            {stats.courses != null && (
+              <Stat
+                num={stats.courses.toLocaleString()}
+                label={t("stats.courses")}
+                sub={t("stats.coursesSub")}
+              />
+            )}
+            {stats.students != null && (
+              <Stat
+                num={stats.students.toLocaleString()}
+                label={t("stats.students")}
+                sub={t("stats.studentsSub")}
+              />
+            )}
+            {stats.cells != null && (
+              <Stat
+                num={stats.cells.toLocaleString()}
+                label={t("stats.cellGroups")}
+                sub={t("stats.cellGroupsSub")}
+              />
+            )}
+            {stats.leaders != null && (
+              <Stat
+                num={stats.leaders.toLocaleString()}
+                label={t("stats.leaders")}
+                sub={t("stats.leadersSub")}
+              />
+            )}
+
+            {/* Platform-fact stats — always rendered, all genuinely true of
+                the product. No mock numbers. */}
             <Stat
-              num={stats.members == null ? "3,200" : stats.members.toLocaleString()}
-              suffix="+"
-              label={t("stats.members")}
-              sub={t("stats.membersSub")}
+              num="2"
+              label={t("stats.modules")}
+              sub={t("stats.modulesSub")}
             />
-            <Stat num="142" label={t("stats.cellGroups")} sub={t("stats.cellGroupsSub")} />
             <Stat
-              num={stats.courses == null ? "21" : stats.courses.toLocaleString()}
-              label={t("stats.courses")}
-              sub={t("stats.coursesSub")}
+              num="3"
+              label={t("stats.languages")}
+              sub={t("stats.languagesSub")}
             />
-            <Stat num="94" suffix="%" label={t("stats.attendance")} sub={t("stats.attendanceSub")} />
+            <Stat
+              num="4"
+              label={t("stats.cellTypes")}
+              sub={t("stats.cellTypesSub")}
+            />
           </div>
         </div>
       </section>
@@ -271,26 +312,6 @@ export default function PublicHomePage() {
       {/* ─── FINAL CTA ──────────────────────────────────────────────── */}
       <section className="section section--dark final-cta">
         <div className="ring" />
-        <Avatar
-          src={avatarUrl(7)}
-          size="md"
-          style={{ position: "absolute", top: "20%", left: "12%", border: "3px solid #BCE955", transform: "rotate(-6deg)" }}
-        />
-        <Avatar
-          src={avatarUrl(15)}
-          size="lg"
-          style={{ position: "absolute", top: "30%", right: "14%", border: "3px solid #BCE955", transform: "rotate(8deg)" }}
-        />
-        <Avatar
-          src={avatarUrl(22)}
-          size="sm"
-          style={{ position: "absolute", bottom: "22%", left: "20%", border: "3px solid #BCE955", transform: "rotate(4deg)" }}
-        />
-        <Avatar
-          src={avatarUrl(38)}
-          size="md"
-          style={{ position: "absolute", bottom: "24%", right: "20%", border: "3px solid #BCE955", transform: "rotate(-3deg)" }}
-        />
         <div className="container-x" style={{ position: "relative" }}>
           <Eyebrow dark>{t("finalCta.eyebrow")}</Eyebrow>
           <h2 className="section-title section-title--center" style={{ marginTop: 18 }}>

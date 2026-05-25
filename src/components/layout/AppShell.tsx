@@ -184,7 +184,7 @@ export function AppShell({
         <footer className="shell-footer">
           <div className="shell-footer-inner">
             <span className="shell-footer-brand">
-              <span className="dot" />© 2026 EduPath
+              <span className="dot" />© 2026 TCCR
             </span>
             <span className="shell-footer-version">v0.1.0</span>
           </div>

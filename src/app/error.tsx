@@ -17,7 +17,7 @@ export default function GlobalError({ reset }: { error: Error; reset: () => void
       }}
     >
       <h1 style={{ fontSize: 40, margin: 0 }}>Something went wrong.</h1>
-      <p style={{ fontSize: 16, color: "#41574A", margin: 0 }}>
+      <p style={{ fontSize: 16, color: "var(--color-body-green)", margin: 0 }}>
         Try again, or refresh the page.
       </p>
       <Button onClick={reset} iconAfter="arrow-right">

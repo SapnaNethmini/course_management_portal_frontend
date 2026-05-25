@@ -82,7 +82,7 @@ export function Typeahead({
             top: "calc(100% + 4px)",
             left: 0,
             right: 0,
-            background: "#fff",
+            background: "var(--color-surface)",
             border: "1px solid var(--color-stroke)",
             borderRadius: 12,
             boxShadow: "0 8px 24px -8px rgba(21,42,36,0.18)",

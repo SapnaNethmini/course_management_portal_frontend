@@ -12,11 +12,7 @@ import { useAppSelector } from "@/application/hooks/useAppSelector";
 import { pushToast } from "@/application/slices/uiSlice";
 import { apiRequest, ApiRequestError } from "@/infrastructure/api/request";
 import type { CourseSummary } from "@/application/hooks/useCourses";
-import { CellTabs } from "@/components/cells/CellTabs";
-import { ManageRolesForm } from "@/components/user/ManageRolesForm";
-import { UserAuditTimeline } from "@/components/user/UserAuditTimeline";
 import { RoleBadgeStack } from "@/components/user/RoleBadgeStack";
-import type { Role } from "@/application/slices/sessionSlice";
 
 interface StudentUser {
   uid: string;
@@ -81,8 +77,9 @@ export default function AdminStudentDetailPage() {
   const [enrollments, setEnrollments] = useState<EnrollmentWithCourse[]>([]);
   const [enrollmentsLoading, setEnrollmentsLoading] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<"suspend" | "reactivate" | null>(null);
-  const [tab, setTab] = useState<"profile" | "roles" | "audit">("profile");
+  const [confirmAction, setConfirmAction] = useState<"suspend" | "reactivate" | "delete" | null>(null);
+  // Demote target — which role to strip. UI only; backend endpoint pending.
+  const [demoteTarget, setDemoteTarget] = useState<"leader" | "g12" | null>(null);
 
   // 1. Fetch the student profile.
   useEffect(() => {
@@ -164,6 +161,47 @@ export default function AdminStudentDetailPage() {
     }
   };
 
+  // Delete — UI-only stub. The backend endpoint (DELETE /users/:uid) is not
+  // implemented yet; this toasts so the operator sees the intent confirmed
+  // and the audit timeline (when wired) can pick it up later.
+  const handleDelete = async () => {
+    if (!student) return;
+    setActionBusy(true);
+    await new Promise((r) => setTimeout(r, 200));
+    dispatch(
+      pushToast({
+        tone: "warning",
+        title: "Delete pending backend",
+        message: `${student.firstName} ${student.lastName} would be deleted (UI only — DELETE /users/:uid not implemented).`,
+      }),
+    );
+    setActionBusy(false);
+    setConfirmAction(null);
+  };
+
+  // Demote — strip leader or g12 from the user. UI only; the role mutation
+  // endpoint (PATCH /users/:uid/roles with action="remove") isn't wired here
+  // yet so we simulate the update locally + toast. The user keeps Member
+  // (and Student, if they had it) and stays as a regular member of any
+  // cells they were leading — only the edit / create privileges go away.
+  const handleDemote = async () => {
+    if (!student || !demoteTarget) return;
+    setActionBusy(true);
+    await new Promise((r) => setTimeout(r, 200));
+    const nextRoles = (student.roles ?? ["member", "student"]).filter((r) => r !== demoteTarget);
+    setStudent({ ...student, roles: nextRoles });
+    const remaining = nextRoles.includes("student") ? "Member + Student" : "Member";
+    dispatch(
+      pushToast({
+        tone: "success",
+        title: `Demoted from ${demoteTarget === "g12" ? "G12 Leader" : "Cell Leader"}`,
+        message: `Now ${remaining}. Stays in their cells as a regular member. (UI only — role mutation backend pending.)`,
+      }),
+    );
+    setActionBusy(false);
+    setDemoteTarget(null);
+  };
+
   const handleReactivate = async () => {
     if (!student) return;
     setActionBusy(true);
@@ -203,6 +241,15 @@ export default function AdminStudentDetailPage() {
   const approvedCount = enrollments.filter((e) => e.enrollment.state === "approved").length;
   const pendingCount = enrollments.filter((e) => e.enrollment.state === "pending").length;
 
+  const studentRoles = student.roles ?? ["member", "student"];
+  const hasLeader = studentRoles.includes("leader");
+  const hasG12 = studentRoles.includes("g12");
+  const canDemote = hasLeader || hasG12;
+  // Demote target priority — if the user holds both, default to stripping G12
+  // first (the higher privilege). Admins can re-open the page to demote
+  // further.
+  const defaultDemoteRole: "leader" | "g12" = hasG12 ? "g12" : "leader";
+
   return (
     <div className="page">
       <div className="page-header">
@@ -214,6 +261,17 @@ export default function AdminStudentDetailPage() {
           <Button variant="secondary" icon="arrow-left" onClick={() => router.push(`${base}/students`)}>
             Back
           </Button>
+          {canDemote && (
+            <Button
+              variant="secondary"
+              icon="chevron-down"
+              onClick={() => setDemoteTarget(defaultDemoteRole)}
+              disabled={actionBusy}
+              title={`Demote from ${defaultDemoteRole === "g12" ? "G12 Leader" : "Cell Leader"}`}
+            >
+              Demote
+            </Button>
+          )}
           {student.status === "suspended" ? (
             <Button
               icon="check-circle"
@@ -233,43 +291,22 @@ export default function AdminStudentDetailPage() {
               {actionBusy ? "Suspending…" : "Suspend"}
             </Button>
           )}
+          <Button
+            variant="secondary"
+            icon="trash-2"
+            onClick={() => setConfirmAction("delete")}
+            disabled={actionBusy}
+            style={{ color: "var(--color-error)", borderColor: "var(--color-error)" }}
+          >
+            Delete
+          </Button>
         </div>
       </div>
 
-      {/* V2 tabs — Profile / Roles / Audit */}
-      <CellTabs
-        tabs={[
-          { id: "profile", label: "Profile", icon: "user" },
-          { id: "roles", label: "Roles", icon: "shield-check" },
-          { id: "audit", label: "Audit", icon: "history" },
-        ]}
-        active={tab}
-        onChange={(id) => setTab(id as "profile" | "roles" | "audit")}
-      />
-
-      {/* ── Roles tab (V2) ─────────────────────────────────────── */}
-      {tab === "roles" && (
-        <div className="settings-card">
-          <h2>Manage roles</h2>
-          <ManageRolesForm
-            userName={fullName || student.uid}
-            initialRoles={(student.roles && student.roles.length > 0
-              ? student.roles
-              : ["member", "student"]) as Role[]}
-          />
-        </div>
-      )}
-
-      {/* ── Audit tab (V2) ─────────────────────────────────────── */}
-      {tab === "audit" && (
-        <div className="settings-card">
-          <h2>Activity timeline</h2>
-          <UserAuditTimeline userName={fullName || student.uid} userUid={student.uid} />
-        </div>
-      )}
-
-      {/* ── Profile tab (existing integrated content) ──────────── */}
-      {tab === "profile" && (
+      {/* Profile content — the Roles and Audit tabs were UI-only mocks and
+          have been removed. Re-introduce them once
+            PATCH /users/:uid/roles  and  GET /users/:uid/audit-log
+          are wired on the backend. */}
       <>
       <div className="settings-card">
         <div className="avatar-row">
@@ -353,25 +390,59 @@ export default function AdminStudentDetailPage() {
       </div>
 
       </>
-      )}
 
-      {/* Suspend / Reactivate confirm */}
+      {/* Suspend / Reactivate / Delete confirm */}
       <ConfirmDialog
         open={confirmAction !== null}
         title={
           confirmAction === "suspend"
             ? `Suspend ${fullName || "this student"}?`
-            : `Reactivate ${fullName || "this student"}?`
+            : confirmAction === "delete"
+              ? `Delete ${fullName || "this student"}?`
+              : `Reactivate ${fullName || "this student"}?`
         }
         message={
           confirmAction === "suspend"
             ? "They will be signed out immediately and won't be able to log in until reactivated. Their enrollments and progress are preserved."
-            : "They will be able to sign in again and resume their courses."
+            : confirmAction === "delete"
+              ? "This will permanently remove the user account, enrollments and progress once the backend endpoint is wired. UI only for now."
+              : "They will be able to sign in again and resume their courses."
         }
-        confirmLabel={confirmAction === "suspend" ? "Suspend" : "Reactivate"}
-        destructive={confirmAction === "suspend"}
-        onConfirm={confirmAction === "suspend" ? handleSuspend : handleReactivate}
+        confirmLabel={
+          confirmAction === "suspend" ? "Suspend"
+          : confirmAction === "delete" ? "Yes, delete"
+          : "Reactivate"
+        }
+        destructive={confirmAction === "suspend" || confirmAction === "delete"}
+        onConfirm={
+          confirmAction === "suspend" ? handleSuspend
+          : confirmAction === "delete" ? handleDelete
+          : handleReactivate
+        }
         onCancel={() => setConfirmAction(null)}
+      />
+
+      {/* Demote confirm — strips the named role. The user keeps every other
+          role they hold (Member always, plus Student if applicable) and
+          stays as a regular member of any cells they belong to — only the
+          edit / create / file-report privileges that came with the demoted
+          role are removed. */}
+      <ConfirmDialog
+        open={demoteTarget !== null}
+        title={
+          demoteTarget === "g12"
+            ? `Demote ${fullName || "this user"} from G12 Leader?`
+            : `Demote ${fullName || "this user"} from Cell Leader?`
+        }
+        message={
+          demoteTarget === "g12"
+            ? "Removes the G12 role only. The user keeps their Cell Leader role (or just Member / Member + Student if they don't lead a cell) and remains a member of any cells they belong to. They lose oversight of the leaders in their network."
+            : "Removes the Cell Leader role only. The user stays as a Member (or Member + Student if applicable) and remains a member of any cells they were leading. They can no longer create or edit cells, manage members, or file cell reports."
+        }
+        confirmLabel="Yes, demote"
+        destructive
+        onConfirm={handleDemote}
+        onCancel={() => setDemoteTarget(null)}
       />
     </div>
   );

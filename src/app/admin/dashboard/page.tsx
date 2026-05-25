@@ -44,7 +44,7 @@ export default function AdminDashboardPage() {
     (async () => {
       // Fetch totals in parallel (limit=1 is enough — we only read `total`).
       const [studentsRes, coursesRes] = await Promise.allSettled([
-        apiRequest<ListTotal>(`/users?role=student&limit=1`),
+        apiRequest<ListTotal>(`/users?roles=student&limit=1`),
         apiRequest<ListTotal>(`/courses?state=published&limit=1`),
       ]);
       if (cancelled) return;

@@ -102,7 +102,7 @@ export default function G12PromotePage() {
         let cursor: string | undefined;
         for (let i = 0; i < 20; i++) {
           // List only Members — no Leaders, G12s, Admins, or Super Admins.
-          const params = new URLSearchParams({ role: "member", limit: "100" });
+          const params = new URLSearchParams({ roles: "member", limit: "100" });
           if (cursor) params.append("cursor", cursor);
           const data = await apiRequest<PagedResponse>(`/users?${params}`);
           collected.push(...(data.items ?? []));
@@ -184,7 +184,7 @@ export default function G12PromotePage() {
         <div>
           <h1>Promote a member</h1>
           <div className="greeting">
-            <b style={{ color: "#152A24" }}>{loading ? "…" : allUsers.length}</b> members eligible for promotion.
+            <b style={{ color: "var(--color-primary)" }}>{loading ? "…" : allUsers.length}</b> members eligible for promotion.
             Promote a Member to Leader or G12 here — roles are additive, so members keep their existing access.
           </div>
         </div>
@@ -265,7 +265,11 @@ export default function G12PromotePage() {
               const hasG12 = roles.includes("g12");
               const isSuspended = u.status === "suspended";
               const showLeaderBtn = !hasLeader && !hasG12;
-              const showG12Btn = !hasG12;
+              // A user who already holds the Leader role is promoted to G12
+              // from the dedicated /g12/network page, not from here. Keeping
+              // the button on this page caused two paths to the same action
+              // and risked the wrong row being promoted.
+              const showG12Btn = !hasG12 && !hasLeader;
               const isThisRowPromoting = promoting === u.uid;
               const promoteDisabled = isThisRowPromoting || isSuspended;
               const suspendedTitle = isSuspended ? "Reactivate the user before promoting" : undefined;
@@ -279,7 +283,7 @@ export default function G12PromotePage() {
                         <div style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {fullName || u.uid.slice(0, 12) + "…"}
                         </div>
-                        <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "#41574A", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--color-body-green)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {u.email}
                         </div>
                       </div>

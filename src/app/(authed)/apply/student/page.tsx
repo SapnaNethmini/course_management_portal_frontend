@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { useRoleRequests, submitRoleRequest } from "@/application/hooks/useRoleRequests";
 import { ApiRequestError } from "@/infrastructure/api/request";
+import { ProfileIncompleteDialog } from "@/components/profile/ProfileIncompleteDialog";
+import { isProfileExtrasComplete, loadProfileExtras } from "@/lib/profileExtras";
 
 const FEATURES = [
   { ico: "book-open",       title: "Browse the catalogue",   body: "See every Bible School course, current intakes, and what each semester covers." },
@@ -25,6 +27,8 @@ export default function ApplyStudentPage() {
   const { hasPendingStudent, latestStudent, loading } = useRoleRequests();
   const [submitting, setSubmitting] = useState(false);
   const [inlineError, setInlineError] = useState("");
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const [profileChecked, setProfileChecked] = useState(false);
 
   // If already approved (roles just not refreshed in Redux yet), send to
   // pending page — it handles token refresh + setUser + redirect to student UI.
@@ -34,8 +38,7 @@ export default function ApplyStudentPage() {
     }
   }, [loading, latestStudent, router]);
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitApplication = async () => {
     if (!user) return;
     setSubmitting(true);
     setInlineError("");
@@ -52,6 +55,17 @@ export default function ApplyStudentPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    // Gate the submission behind a profile-completeness check the first time.
+    if (!profileChecked && !isProfileExtrasComplete(loadProfileExtras(user.uid))) {
+      setProfileDialogOpen(true);
+      return;
+    }
+    void submitApplication();
   };
 
   return (
@@ -97,6 +111,16 @@ export default function ApplyStudentPage() {
           <Link href="/my-requests" style={{ fontWeight: 600, color: "#DC2626" }}>View request →</Link>
         </div>
       )}
+
+      <ProfileIncompleteDialog
+        open={profileDialogOpen}
+        onSkip={() => {
+          setProfileDialogOpen(false);
+          setProfileChecked(true);
+          void submitApplication();
+        }}
+        onClose={() => setProfileDialogOpen(false)}
+      />
 
       {!hasPendingStudent && (
         <>

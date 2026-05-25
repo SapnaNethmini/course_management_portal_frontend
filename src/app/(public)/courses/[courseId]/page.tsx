@@ -225,7 +225,7 @@ export default function PublicCourseDetailPage() {
                         fontFamily: "var(--font-heading)",
                         fontSize: 18,
                         fontWeight: 600,
-                        color: "#152A24",
+                        color: "var(--color-primary)",
                       }}
                     >
                       {sem.title}

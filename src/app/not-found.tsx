@@ -18,7 +18,7 @@ export default function NotFound() {
     >
       <Logo height={32} />
       <h1 style={{ fontSize: 56, margin: "12px 0 0" }}>404</h1>
-      <p style={{ fontSize: 16, color: "#41574A", margin: 0 }}>
+      <p style={{ fontSize: 16, color: "var(--color-body-green)", margin: 0 }}>
         That page doesn&apos;t exist.
       </p>
       <Link href="/">

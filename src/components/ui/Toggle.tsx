@@ -38,7 +38,7 @@ export function Toggle({ checked, onChange, disabled = false, label }: Props) {
           width: 18,
           height: 18,
           borderRadius: "50%",
-          background: checked ? "var(--color-primary, #152A24)" : "#fff",
+          background: checked ? "#152A24" : "#fff",
           boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
           transition: "left 150ms, background 150ms",
         }}

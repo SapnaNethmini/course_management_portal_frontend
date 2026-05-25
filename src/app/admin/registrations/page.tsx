@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/Input";
 import { useRoleRequestQueue } from "@/application/hooks/useRoleRequestQueue";
 import { RoleBadgeStack } from "@/components/user/RoleBadgeStack";
+
+const PAGE_SIZE = 25;
 
 function relativeTime(iso: string): string {
   const diffMin = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -29,6 +31,14 @@ export default function RoleRequestsPage() {
   const [rejectNote, setRejectNote] = useState("");
   const [approveId, setApproveId] = useState<string | null>(null);
   const [rejectId, setRejectId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+
+  // Reset to page 1 when filters change.
+  useEffect(() => { setPage(0); }, [Q.status, Q.search]);
+
+  const totalPages = Math.max(1, Math.ceil(Q.items.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const pagedItems = Q.items.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   const onApproveConfirm = async () => {
     if (!approveId) return;
@@ -66,7 +76,7 @@ export default function RoleRequestsPage() {
               onClick={() => Q.setStatus(s)}
               style={{
                 padding: "7px 16px", borderRadius: 9999, border: "1px solid var(--color-stroke)",
-                background: Q.status === s ? "var(--color-primary)" : "#fff",
+                background: Q.status === s ? "#152A24" : "#fff",
                 color: Q.status === s ? "#fff" : "var(--color-primary)",
                 fontFamily: "var(--font-body)", fontWeight: 600, fontSize: 13, cursor: "pointer",
               }}
@@ -104,7 +114,7 @@ export default function RoleRequestsPage() {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {Q.items.map((item) => (
+          {pagedItems.map((item) => (
             <div
               key={item.id}
               style={{
@@ -174,6 +184,33 @@ export default function RoleRequestsPage() {
               )}
             </div>
           ))}
+
+          {Q.items.length > 0 && (
+            <div style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "12px 4px 4px",
+              fontFamily: "var(--font-body)",
+              fontSize: 13,
+              color: "var(--color-body-green)",
+              flexWrap: "wrap",
+              gap: 10,
+            }}>
+              <span>
+                Showing <b>{safePage * PAGE_SIZE + 1}</b>–<b>{Math.min((safePage + 1) * PAGE_SIZE, Q.items.length)}</b> of <b>{Q.items.length}</b>
+                {totalPages > 1 && <> · Page <b>{safePage + 1}</b> of <b>{totalPages}</b></>}
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Button size="sm" variant="secondary" icon="chevron-left" disabled={safePage === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                  Previous
+                </Button>
+                <Button size="sm" variant="secondary" iconAfter="chevron-right" disabled={safePage >= totalPages - 1} onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}>
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

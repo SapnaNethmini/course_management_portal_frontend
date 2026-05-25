@@ -862,6 +862,15 @@ svg.lucide { stroke-width: 1.75; }
   --color-light-gray: rgba(255, 255, 255, 0.08);
   --color-muted: rgba(255, 255, 255, 0.45);
   --color-body-green: rgba(255, 255, 255, 0.7);
+  /* Text-tone variables flipped for dark. The light values (#152a24, #1f3626,
+     #15803d, #b91c1c) sit too close to the dark page background and become
+     invisible. Any place that needs the original dark-green AS A BACKGROUND
+     (lang pill, report-step, registrations filter tab) must hardcode #152A24
+     rather than rely on var(--color-primary). */
+  --color-primary: #ffffff;
+  --color-primary-2: rgba(255, 255, 255, 0.85);
+  --color-success-deep: #4ade80;
+  --color-error-deep: #f87171;
   --color-success-bg: rgba(61, 181, 95, 0.14);
   --color-warning-bg: rgba(217, 119, 6, 0.14);
   --color-error-bg: rgba(220, 38, 38, 0.14);
@@ -937,7 +946,7 @@ svg.lucide { stroke-width: 1.75; }
 .dark .flow-step small { color: rgba(255,255,255,0.4); }
 .dark .flow-step i { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); }
 .dark .flow-step.active i { background: var(--color-accent); color: var(--color-primary); }
-.dark .flow-step.done i { background: var(--color-primary); color: var(--color-accent); }
+.dark .flow-step.done i { background: #152A24; color: var(--color-accent); }
 .dark .flow-arrow { color: rgba(255,255,255,0.25); }
 .dark .activity .row { border-bottom-color: rgba(255, 255, 255, 0.06); }
 .dark .activity .row .ico { background: rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.7); }
@@ -1107,7 +1116,7 @@ svg.lucide { stroke-width: 1.75; }
 /* Language pill (dropdown trigger styled by the component; pill kept for top-bar uses) */
 .lang-pill { display: inline-flex; padding: 3px; gap: 2px; background: var(--color-light-gray); border-radius: 9999px; }
 .lang-pill button { border: none; background: transparent; cursor: pointer; padding: 5px 10px; font-family: var(--font-body); font-weight: 600; font-size: 12px; color: var(--color-body-green); border-radius: 9999px; }
-.lang-pill button.active { background: var(--color-primary); color: #fff; }
+.lang-pill button.active { background: #152A24; color: #fff; }
 .lang-pill--dark { background: rgba(255, 255, 255, 0.10); }
 .lang-pill--dark button { color: rgba(255, 255, 255, 0.7); }
 .lang-pill--dark button.active { background: var(--color-accent); color: var(--color-primary); }
@@ -1243,7 +1252,7 @@ svg.lucide { stroke-width: 1.75; }
 .report-step:hover { background: var(--color-stroke-2); }
 .report-step.active { background: rgba(188, 233, 85, 0.18); color: var(--color-primary); font-weight: 600; }
 .report-step .num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 9999px; background: var(--color-light-gray); color: var(--color-body-green); font-family: var(--font-heading); font-weight: 700; font-size: 11px; flex-shrink: 0; }
-.report-step.active .num { background: var(--color-primary); color: var(--color-accent); }
+.report-step.active .num { background: #152A24; color: var(--color-accent); }
 .report-step.done .num { background: var(--color-accent); color: var(--color-primary); }
 .report-step small { display: block; font-weight: 400; font-size: 11px; color: var(--color-muted); margin-top: 2px; }
 
@@ -1263,12 +1272,11 @@ svg.lucide { stroke-width: 1.75; }
 .att-list { display: flex; flex-direction: column; gap: 6px; }
 .att-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 10px 14px; background: #FAFAFA; border-radius: 10px; }
 .att-row .name { font-family: var(--font-body); font-size: 14px; color: var(--color-primary); font-weight: 500; display: flex; align-items: center; gap: 10px; }
-.att-toggle { display: inline-flex; padding: 2px; gap: 2px; background: var(--color-light-gray); border-radius: 9999px; }
-.att-toggle button { border: none; background: transparent; cursor: pointer; padding: 4px 10px; font-family: var(--font-body); font-weight: 600; font-size: 11px; color: var(--color-body-green); border-radius: 9999px; }
-.att-toggle button.present { color: var(--color-success-deep); }
-.att-toggle button.absent { color: var(--color-error-deep); }
-.att-toggle button.active.present { background: var(--color-success-bg); }
-.att-toggle button.active.absent { background: var(--color-error-bg); }
+.att-toggle { display: inline-flex; padding: 3px; gap: 2px; background: var(--color-light-gray); border-radius: 9999px; }
+.att-toggle button { border: none; background: transparent; cursor: pointer; padding: 6px 14px; font-family: var(--font-body); font-weight: 600; font-size: 12px; color: var(--color-muted); border-radius: 9999px; transition: background 120ms ease, color 120ms ease; }
+.att-toggle button:hover { color: var(--color-body-green); }
+.att-toggle button.active.present { background: var(--color-success); color: #fff; box-shadow: 0 1px 2px rgba(61, 181, 95, 0.25); }
+.att-toggle button.active.absent  { background: var(--color-error);   color: #fff; box-shadow: 0 1px 2px rgba(220, 38, 38, 0.25); }
 
 /* KPI mini card */
 .kpi-mini { background: #fff; border: 1px solid var(--color-stroke); border-radius: 14px; padding: 16px 18px; }

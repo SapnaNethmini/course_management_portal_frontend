@@ -7,6 +7,8 @@ import { Icon } from "@/components/ui/Icon";
 import { AttendanceEditor } from "./AttendanceEditor";
 import { SatisfactionStars } from "./SatisfactionStars";
 import { useSessionUser } from "@/application/hooks/useSessionUser";
+import { useAppSelector } from "@/application/hooks/useAppSelector";
+import { cellMemberSearchRoles } from "@/lib/cellMemberSearchRoles";
 import type { Cell } from "@/lib/mock/cells";
 import type { AttendanceEntry, CellReportLanguage } from "@/lib/mock/cellReports";
 
@@ -75,6 +77,8 @@ export function CellReportForm({ cell, onSubmit, onCancel }: Props) {
   // the form so the leader knows the report will be attributed to them.
   const sessionUser = useSessionUser();
   const filerName = sessionUser.name || "Current user";
+  const sessionRoles = useAppSelector((s) => s.session.user?.roles);
+  const attendanceRoleFilter = cellMemberSearchRoles(sessionRoles);
 
   const stepIdx = STEPS.findIndex((s) => s.id === step);
   const isLast = stepIdx === STEPS.length - 1;
@@ -187,27 +191,36 @@ export function CellReportForm({ cell, onSubmit, onCancel }: Props) {
           <>
             <h2>Meeting basics</h2>
             <p className="sub">When did you meet and in what language?</p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <Field label="Date">
-                <input type="date" className="input" value={meetingDate} onChange={(e) => setMeetingDate(e.target.value)} style={inputStyle()} />
-              </Field>
-              <Field label="Language">
-                <select className="select" value={language} onChange={(e) => setLanguage(e.target.value as CellReportLanguage)} style={inputStyle()}>
-                  <option value="en">English</option>
-                  <option value="si">සිංහල</option>
-                  <option value="ta">தமிழ்</option>
-                </select>
-              </Field>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <Field label="Date" inGrid>
+                  <input type="date" className="input" value={meetingDate} onChange={(e) => setMeetingDate(e.target.value)} style={inputStyle()} />
+                </Field>
+                <Field label="Language" inGrid>
+                  <select className="select" value={language} onChange={(e) => setLanguage(e.target.value as CellReportLanguage)} style={inputStyle()}>
+                    <option value="en">English</option>
+                    <option value="si">සිංහල</option>
+                    <option value="ta">தமிழ்</option>
+                  </select>
+                </Field>
+              </div>
               {didMeet && (
                 <>
-                  <Field label="Location"><input className="input" value={location} onChange={(e) => setLocation(e.target.value)} style={inputStyle()} /></Field>
-                  <div />
-                  <Field label="Start time"><input type="time" className="input" value={startTime} onChange={(e) => setStartTime(e.target.value)} style={inputStyle()} /></Field>
-                  <Field label="End time"><input type="time" className="input" value={endTime} onChange={(e) => setEndTime(e.target.value)} style={inputStyle()} /></Field>
+                  <Field label="Location" inGrid>
+                    <input className="input" value={location} onChange={(e) => setLocation(e.target.value)} style={inputStyle()} />
+                  </Field>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                    <Field label="Start time" inGrid>
+                      <input type="time" className="input" value={startTime} onChange={(e) => setStartTime(e.target.value)} style={inputStyle()} />
+                    </Field>
+                    <Field label="End time" inGrid>
+                      <input type="time" className="input" value={endTime} onChange={(e) => setEndTime(e.target.value)} style={inputStyle()} />
+                    </Field>
+                  </div>
                 </>
               )}
             </div>
-            <div style={{ marginTop: 16 }}>
+            <div style={{ marginTop: 20 }}>
               <div className="rf-yesno">
                 <label className={leaderPresent ? "on" : ""}>
                   <input type="radio" checked={leaderPresent} onChange={() => setLeaderPresent(true)} /> Leader was present
@@ -248,7 +261,7 @@ export function CellReportForm({ cell, onSubmit, onCancel }: Props) {
             <h2>Attendance</h2>
             <p className="sub">Toggle present / absent for each member. Add visitors if any.</p>
             {didMeet ? (
-              <AttendanceEditor attendance={attendance} onChange={setAttendance} />
+              <AttendanceEditor attendance={attendance} onChange={setAttendance} roleFilter={attendanceRoleFilter} />
             ) : (
               <p style={{ color: "var(--color-muted)", fontFamily: "var(--font-body)", fontSize: 14 }}>
                 Attendance is skipped because the cell didn&apos;t meet.
@@ -351,9 +364,25 @@ function textareaStyle(): React.CSSProperties {
   return { ...inputStyle(), resize: "vertical" };
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+  inGrid = false,
+}: {
+  label: string;
+  children: React.ReactNode;
+  /** Set to true when this Field is a direct grid/flex child — the parent
+   *  controls vertical spacing via gap, so the Field shouldn't add its own
+   *  margins. We also kill the global `.field + .field { margin-top: 14px }`
+   *  rule that otherwise pushes the right-column Field down by 14 px, leaving
+   *  the labels visibly misaligned across the grid row. */
+  inGrid?: boolean;
+}) {
+  const style: React.CSSProperties = inGrid
+    ? { marginTop: 0, marginBottom: 0 }
+    : { marginBottom: 14 };
   return (
-    <div className="field" style={{ marginBottom: 14 }}>
+    <div className="field" style={style}>
       <label className="label" style={{ display: "block", fontFamily: "var(--font-body)", fontSize: 12, fontWeight: 600, color: "var(--color-body-green)", marginBottom: 6 }}>
         {label}
       </label>

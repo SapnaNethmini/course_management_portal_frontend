@@ -61,20 +61,20 @@ export function UserMenu({ user, role, roles, activeRole, onSwitchRole, onLogout
             top: "calc(100% + 8px)",
             right: 0,
             minWidth: 240,
-            background: "#fff",
+            background: "var(--color-surface)",
             borderRadius: 12,
             boxShadow: "0 10px 28px -8px rgba(21,42,36,0.18), 0 4px 8px -4px rgba(21,42,36,0.08)",
-            border: "1px solid rgba(21,42,36,0.08)",
+            border: "1px solid var(--color-stroke)",
             padding: 6,
             zIndex: 100,
           }}
         >
           <div style={{ padding: "10px 12px", borderBottom: "1px solid rgba(21,42,36,0.08)", marginBottom: 4 }}>
-            <div style={{ fontFamily: "var(--font-body)", fontWeight: 600, fontSize: 14, color: "#152A24" }}>
+            <div style={{ fontFamily: "var(--font-body)", fontWeight: 600, fontSize: 14, color: "var(--color-primary)" }}>
               {user.name}
             </div>
             {role && (
-              <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "#41574A", marginTop: 2 }}>
+              <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--color-body-green)", marginTop: 2 }}>
                 {role}
               </div>
             )}
@@ -83,7 +83,7 @@ export function UserMenu({ user, role, roles, activeRole, onSwitchRole, onLogout
           {/* Role switcher — only shown when user holds multiple roles */}
           {showSwitcher && (
             <>
-              <div style={{ padding: "8px 12px 4px", fontFamily: "var(--font-body)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#41574A" }}>
+              <div style={{ padding: "8px 12px 4px", fontFamily: "var(--font-body)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-body-green)" }}>
                 Switch view
               </div>
               {validRoles.map((r) => {
@@ -106,7 +106,7 @@ export function UserMenu({ user, role, roles, activeRole, onSwitchRole, onLogout
                       textAlign: "left",
                       fontFamily: "var(--font-body)",
                       fontSize: 14,
-                      color: "#152A24",
+                      color: "var(--color-primary)",
                       fontWeight: active ? 600 : 400,
                     }}
                   >
@@ -135,7 +135,7 @@ export function UserMenu({ user, role, roles, activeRole, onSwitchRole, onLogout
               textAlign: "left",
               fontFamily: "var(--font-body)",
               fontSize: 14,
-              color: "#152A24",
+              color: "var(--color-primary)",
             }}
           >
             <Icon name="log-out" size={16} /> Sign out

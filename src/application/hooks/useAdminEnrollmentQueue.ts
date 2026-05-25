@@ -83,53 +83,82 @@ export function useAdminEnrollmentQueue(courseIdFilter?: string) {
         pageNo += 1;
       } while (cursor && pageNo < MAX_PAGES);
 
-      // Step 2 — keep ALL states (pending/approved/rejected) so the page can
-      // filter client-side without re-fetching. Status counts and badges still
-      // distinguish them via isPending / isApproved / isRejected helpers.
-      const everyEnrollment = collected;
-
-      // Step 3a — enrich with student profiles in parallel.
-      const uniqueUids = [...new Set(everyEnrollment.map((e) => e.studentUid))];
-      const profileMap = new Map<string, StudentProfile>();
-
-      // Step 3b — enrich with course titles in parallel.
-      const uniqueCourseIds = [...new Set(everyEnrollment.map((e) => e.courseId))];
-      const courseTitleMap = new Map<string, string>();
-
-      await Promise.allSettled([
-        ...uniqueUids.map(async (uid) => {
-          try {
-            const profile = await apiRequest<StudentProfile>(`/users/${uid}`);
-            profileMap.set(uid, profile);
-          } catch {
-            // Silently skip if profile fetch fails for a given UID.
-          }
-        }),
-        ...uniqueCourseIds.map(async (courseId) => {
-          try {
-            const course = await apiRequest<{ id: string; title: string }>(`/courses/${courseId}`);
-            if (course?.title) courseTitleMap.set(courseId, course.title);
-          } catch {
-            // Course unavailable (deleted, archived, or no access) — fallback handled in UI.
-          }
-        }),
-      ]);
-
-      const enriched = everyEnrollment.map((e) => ({
-        ...e,
-        student: profileMap.get(e.studentUid),
-        courseTitle: courseTitleMap.get(e.courseId),
-      }));
-
-      setAllItems(enriched);
-      setTotal(enriched.length);
+      // Step 2 — render the table immediately with raw rows. Don't make the
+      // admin wait on the per-row enrichment fan-out (one request per unique
+      // user + per unique course) before seeing anything. Loading flips off
+      // here so the table appears with UIDs / "Course unavailable" placeholders
+      // while step 3 runs in the background.
+      setAllItems(collected);
+      setTotal(collected.length);
       setSelected(new Set());
       setPage(0);
-      const pendingTotal = enriched.filter((e) => isPending(e.state)).length;
+      const pendingTotal = collected.filter((e) => isPending(e.state)).length;
       dispatch(setPendingEnrollments(pendingTotal));
+      setLoading(false);
+
+      // Step 3 — enrich in parallel. We collect the failed IDs so we can retry
+      // once after a short delay. This is the original source of the "names
+      // show up after 3 minutes" bug: a transient failure here left the row
+      // un-enriched until the admin manually clicked Refresh.
+      const uniqueUids = [...new Set(collected.map((e) => e.studentUid))];
+      const uniqueCourseIds = [...new Set(collected.map((e) => e.courseId))];
+      const profileMap = new Map<string, StudentProfile>();
+      const courseTitleMap = new Map<string, string>();
+
+      const fetchProfile = async (uid: string) => {
+        try {
+          const profile = await apiRequest<StudentProfile>(`/users/${uid}`);
+          profileMap.set(uid, profile);
+        } catch { /* will retry below */ }
+      };
+      const fetchCourseTitle = async (courseId: string) => {
+        try {
+          const course = await apiRequest<{ id: string; title: string }>(`/courses/${courseId}`);
+          if (course?.title) courseTitleMap.set(courseId, course.title);
+        } catch { /* will retry below */ }
+      };
+
+      await Promise.allSettled([
+        ...uniqueUids.map(fetchProfile),
+        ...uniqueCourseIds.map(fetchCourseTitle),
+      ]);
+
+      // Apply first-pass enrichment.
+      setAllItems((prev) =>
+        prev.map((e) => ({
+          ...e,
+          student: profileMap.get(e.studentUid) ?? e.student,
+          courseTitle: courseTitleMap.get(e.courseId) ?? e.courseTitle,
+        })),
+      );
+
+      // Step 4 — retry any that failed. The previous build would render the
+      // un-enriched row for the rest of the session; this catches transient
+      // failures (token-refresh race, brief 5xx) without forcing a manual
+      // refresh. Two short retries with backoff are enough in practice.
+      const stillMissingUids = uniqueUids.filter((uid) => !profileMap.has(uid));
+      const stillMissingCourseIds = uniqueCourseIds.filter((id) => !courseTitleMap.has(id));
+      if (stillMissingUids.length === 0 && stillMissingCourseIds.length === 0) return;
+
+      for (const delayMs of [800, 2500]) {
+        await new Promise((r) => setTimeout(r, delayMs));
+        const retryUids = uniqueUids.filter((uid) => !profileMap.has(uid));
+        const retryCourseIds = uniqueCourseIds.filter((id) => !courseTitleMap.has(id));
+        if (retryUids.length === 0 && retryCourseIds.length === 0) break;
+        await Promise.allSettled([
+          ...retryUids.map(fetchProfile),
+          ...retryCourseIds.map(fetchCourseTitle),
+        ]);
+        setAllItems((prev) =>
+          prev.map((e) => ({
+            ...e,
+            student: profileMap.get(e.studentUid) ?? e.student,
+            courseTitle: courseTitleMap.get(e.courseId) ?? e.courseTitle,
+          })),
+        );
+      }
     } catch {
       dispatch(pushToast({ tone: "warning", title: "Failed to load enrollments" }));
-    } finally {
       setLoading(false);
     }
   }, [dispatch, courseIdFilter]);

@@ -92,11 +92,43 @@ function isProtectedPath(path: string): boolean {
  *   signs out and (if on a protected path) sends user to /login.
  * - Returns `undefined` on 204; throws `ApiRequestError` on non-2xx.
  */
+/**
+ * Map of in-flight GET requests, keyed by `path::locale`. When several hooks
+ * request the same URL concurrently (e.g. the per-row enrichment fan-out in
+ * useAdminEnrollmentQueue making N copies of GET /users/{uid}), they all
+ * receive the same Promise instead of triggering N independent requests.
+ *
+ * Entries are removed as soon as the underlying request settles, so this is a
+ * dedup of concurrent traffic — not a response cache. POST/PUT/PATCH/DELETE
+ * and any request with an idempotency key bypass this entirely.
+ */
+const inflightGets = new Map<string, Promise<unknown>>();
+
 export async function apiRequest<T = unknown>(
   path: string,
   options: RequestOptions = {}
 ): Promise<T> {
   const { body, auth: useAuth = true, headers, idempotencyKey, ...rest } = options;
+  const method = (rest.method ?? "GET").toString().toUpperCase();
+
+  // Only dedup plain GETs. Anything that mutates server state or carries an
+  // idempotency key needs to actually hit the network every time.
+  if (method === "GET" && !idempotencyKey) {
+    const key = `${path}::${currentLocale()}`;
+    const existing = inflightGets.get(key);
+    if (existing) return existing as Promise<T>;
+
+    const promise = executeRequest<T>(
+      path,
+      { body, useAuth, headers, idempotencyKey, rest },
+      false,
+    ).finally(() => {
+      inflightGets.delete(key);
+    });
+    inflightGets.set(key, promise);
+    return promise;
+  }
+
   return executeRequest<T>(path, { body, useAuth, headers, idempotencyKey, rest }, false);
 }
 

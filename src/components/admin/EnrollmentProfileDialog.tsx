@@ -104,8 +104,10 @@ export function EnrollmentProfileDialog({ enrollment, onClose, onApprove, onReje
     : enrollment.studentUid;
 
   const pending = !isApproved(enrollment.state) && !isRejected(enrollment.state);
-  const filledOL = extras.olResults.filter((r) => r.subject.trim() || r.result.trim());
-  const filledAL = extras.alResults.filter((r) => r.subject.trim() || r.result.trim());
+  // Show qualifications the student saved in their own browser. Cross-device
+  // limitation persists until the backend exposes a stored qualifications
+  // array — see profileExtras.ts comments.
+  const filledQuals = extras.qualifications.filter((q) => q.title.trim());
 
   return (
     <Modal open={open} onClose={onClose}>
@@ -200,137 +202,67 @@ export function EnrollmentProfileDialog({ enrollment, onClose, onApprove, onReje
           {(enrollment.student as { phoneNumber?: string } | undefined)?.phoneNumber ?? <NotProvided />}
         </FieldRow>
         <FieldRow label="Address">
-          {extras.address.trim() ? extras.address : <NotProvided />}
+          {(enrollment.student as { address?: string | null } | undefined)?.address?.trim() ?? <NotProvided />}
         </FieldRow>
 
         {/* Personal */}
         <SectionTitle>Personal</SectionTitle>
         <FieldRow label="Date of birth">
-          {extras.dateOfBirth.trim() ? extras.dateOfBirth : <NotProvided />}
+          {(enrollment.student as { dateOfBirth?: string | null } | undefined)?.dateOfBirth ?? <NotProvided />}
         </FieldRow>
         <FieldRow label="Gender">
-          {extras.gender.trim() ? extras.gender : <NotProvided />}
+          {(enrollment.student as { gender?: string | null } | undefined)?.gender ?? <NotProvided />}
+        </FieldRow>
+        <FieldRow label="Qualification">
+          {(enrollment.student as { qualificationTitle?: string | null } | undefined)?.qualificationTitle ?? <NotProvided />}
         </FieldRow>
 
-        {/* Educational qualifications */}
-        <SectionTitle>Educational qualifications</SectionTitle>
-
-        <div
-          style={{
-            fontFamily: "var(--font-body)",
-            fontSize: 12,
-            color: "var(--color-body-green)",
-            fontWeight: 600,
-            margin: "8px 0 6px",
-          }}
-        >
-          O/L results
-        </div>
-        {filledOL.length === 0 ? (
+        {/* Qualifications — list of student's qualifications with attachments. */}
+        <SectionTitle>Qualifications</SectionTitle>
+        {filledQuals.length === 0 ? (
           <div style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "var(--color-muted)", fontStyle: "italic", paddingBottom: 8 }}>
-            No O/L results recorded.
+            No qualifications recorded.
           </div>
         ) : (
           <div style={{ border: "1px solid var(--color-stroke)", borderRadius: 10, overflow: "hidden", marginBottom: 8 }}>
-            {filledOL.map((row, i) => (
+            {filledQuals.map((q, i) => (
               <div
-                key={`ol-${i}`}
+                key={q.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "40px 1fr 140px",
-                  padding: "8px 12px",
+                  gridTemplateColumns: "40px 1fr auto",
+                  gap: 10,
+                  alignItems: "center",
+                  padding: "10px 12px",
                   fontFamily: "var(--font-body)",
                   fontSize: 13,
-                  borderBottom: i < filledOL.length - 1 ? "1px solid var(--color-stroke-2)" : 0,
+                  borderBottom: i < filledQuals.length - 1 ? "1px solid var(--color-stroke-2)" : 0,
                 }}
               >
                 <span style={{ color: "var(--color-muted)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
                   {i + 1}.
                 </span>
-                <span style={{ color: "var(--color-primary)" }}>{row.subject || <NotProvided />}</span>
-                <span style={{ color: "var(--color-body-green)", fontWeight: 600 }}>
-                  {row.result || "—"}
+                <span style={{ color: "var(--color-primary)", fontWeight: 600 }}>{q.title}</span>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "4px 10px",
+                    borderRadius: 9999,
+                    background: q.attachmentName ? "rgba(188,233,85,0.12)" : "var(--color-stroke-2)",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 11,
+                    color: q.attachmentName ? "var(--color-primary)" : "var(--color-muted)",
+                  }}
+                >
+                  <Icon name="file-text" size={12} />
+                  {q.attachmentName ?? "no attachment"}
                 </span>
               </div>
             ))}
           </div>
         )}
-
-        <div
-          style={{
-            fontFamily: "var(--font-body)",
-            fontSize: 12,
-            color: "var(--color-body-green)",
-            fontWeight: 600,
-            margin: "12px 0 6px",
-          }}
-        >
-          A/L results
-        </div>
-        {filledAL.length === 0 ? (
-          <div style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "var(--color-muted)", fontStyle: "italic", paddingBottom: 8 }}>
-            No A/L results recorded.
-          </div>
-        ) : (
-          <div style={{ border: "1px solid var(--color-stroke)", borderRadius: 10, overflow: "hidden", marginBottom: 8 }}>
-            {filledAL.map((row, i) => (
-              <div
-                key={`al-${i}`}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "40px 1fr 140px",
-                  padding: "8px 12px",
-                  fontFamily: "var(--font-body)",
-                  fontSize: 13,
-                  borderBottom: i < filledAL.length - 1 ? "1px solid var(--color-stroke-2)" : 0,
-                }}
-              >
-                <span style={{ color: "var(--color-muted)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                  {i + 1}.
-                </span>
-                <span style={{ color: "var(--color-primary)" }}>{row.subject || <NotProvided />}</span>
-                <span style={{ color: "var(--color-body-green)", fontWeight: 600 }}>
-                  {row.result || "—"}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10 }}>
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "8px 12px",
-              borderRadius: 10,
-              background: extras.olPdfName ? "rgba(188,233,85,0.12)" : "var(--color-stroke-2)",
-              fontFamily: "var(--font-body)",
-              fontSize: 12,
-              color: extras.olPdfName ? "var(--color-primary)" : "var(--color-muted)",
-            }}
-          >
-            <Icon name="file-text" size={14} />
-            O/L transcript: {extras.olPdfName ?? "not attached"}
-          </div>
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "8px 12px",
-              borderRadius: 10,
-              background: extras.alPdfName ? "rgba(188,233,85,0.12)" : "var(--color-stroke-2)",
-              fontFamily: "var(--font-body)",
-              fontSize: 12,
-              color: extras.alPdfName ? "var(--color-primary)" : "var(--color-muted)",
-            }}
-          >
-            <Icon name="file-text" size={14} />
-            A/L transcript: {extras.alPdfName ?? "not attached"}
-          </div>
-        </div>
 
         {/* Footer actions */}
         <div

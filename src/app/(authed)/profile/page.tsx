@@ -14,11 +14,19 @@ import { pushToast } from "@/application/slices/uiSlice";
 import {
   loadProfileExtras,
   saveProfileExtras,
+  newQualificationId,
   EMPTY_PROFILE_EXTRAS,
   type ProfileExtras,
+  type Qualification,
 } from "@/lib/profileExtras";
 
-const GENDER_OPTIONS = ["Male", "Female", "Other", "Prefer not to say"] as const;
+// Spec §3.2 gender values are lowercase: male | female | other.
+// We show capital labels but send the lowercase value.
+const GENDER_OPTIONS: { value: "male" | "female" | "other"; label: string }[] = [
+  { value: "male",   label: "Male" },
+  { value: "female", label: "Female" },
+  { value: "other",  label: "Other" },
+];
 
 // Visual required-marker — pure styling, no validation logic.
 function ReqMark() {
@@ -49,12 +57,18 @@ export default function ProfilePage() {
   const [dirty, setDirty]         = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // ── Extended profile (UI-only, persisted via localStorage; API later) ──
+  // Personal-details fields (PATCH /me §3.2) — qualificationTitle moves to
+  // the new Qualifications card below.
+  const [address, setAddress] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [gender, setGender] = useState<"" | "male" | "female" | "other">("");
+  const [detailsDirty, setDetailsDirty] = useState(false);
+
+  // ── Qualifications list (localStorage; first entry's title mirrors to
+  //    the backend's qualificationTitle field via PATCH /me on save). ──
   const [extras, setExtras] = useState<ProfileExtras>(EMPTY_PROFILE_EXTRAS);
   const [extrasDirty, setExtrasDirty] = useState(false);
   const [extrasSaving, setExtrasSaving] = useState(false);
-  const olPdfInputRef = useRef<HTMLInputElement | null>(null);
-  const alPdfInputRef = useRef<HTMLInputElement | null>(null);
 
   // Password fields
   const [currentPw,    setCurrentPw]    = useState("");
@@ -71,39 +85,67 @@ export default function ProfilePage() {
       setFirstName(P.user.firstName ?? "");
       setLastName(P.user.lastName  ?? "");
       setPhoneNumber(P.user.phoneNumber ?? "");
+      setAddress(P.user.address ?? "");
+      setDateOfBirth(P.user.dateOfBirth ?? "");
+      setGender((P.user.gender ?? "") as "" | "male" | "female" | "other");
       setDirty(false);
+      setDetailsDirty(false);
     }
   }, [P.user]);
 
-  // Hydrate the extras card from localStorage once we know the uid.
+  // Hydrate the qualifications list from localStorage. If localStorage is
+  // empty but the backend already has a single qualificationTitle (from the
+  // previous single-field form), seed the list with one entry so the user
+  // doesn't lose their existing data.
   useEffect(() => {
     if (!P.user?.uid) return;
-    setExtras(loadProfileExtras(P.user.uid));
+    const stored = loadProfileExtras(P.user.uid);
+    if (stored.qualifications.length === 0 && P.user.qualificationTitle) {
+      setExtras({
+        qualifications: [{
+          id: newQualificationId(),
+          title: P.user.qualificationTitle,
+          attachmentName: null,
+        }],
+      });
+    } else {
+      setExtras(stored);
+    }
     setExtrasDirty(false);
-  }, [P.user?.uid]);
+  }, [P.user?.uid, P.user?.qualificationTitle]);
 
-  const patchExtras = (patch: Partial<ProfileExtras>) => {
-    setExtras((prev) => ({ ...prev, ...patch }));
+  /* ── Qualification list handlers ─────────────────────────────────── */
+
+  const addQualification = () => {
+    setExtras((prev) => ({
+      qualifications: [
+        ...prev.qualifications,
+        { id: newQualificationId(), title: "", attachmentName: null },
+      ],
+    }));
     setExtrasDirty(true);
   };
 
-  const patchOl = (idx: number, field: "subject" | "result", value: string) => {
-    setExtras((prev) => {
-      const next = prev.olResults.map((row, i) => (i === idx ? { ...row, [field]: value } : row));
-      return { ...prev, olResults: next };
-    });
+  const removeQualification = (id: string) => {
+    setExtras((prev) => ({
+      qualifications: prev.qualifications.filter((q) => q.id !== id),
+    }));
     setExtrasDirty(true);
   };
 
-  const patchAl = (idx: number, field: "subject" | "result", value: string) => {
-    setExtras((prev) => {
-      const next = prev.alResults.map((row, i) => (i === idx ? { ...row, [field]: value } : row));
-      return { ...prev, alResults: next };
-    });
+  const updateQualificationTitle = (id: string, title: string) => {
+    setExtras((prev) => ({
+      qualifications: prev.qualifications.map((q) =>
+        q.id === id ? { ...q, title } : q,
+      ),
+    }));
     setExtrasDirty(true);
   };
 
-  const onExtrasFileChange = (which: "ol" | "al") => (e: React.ChangeEvent<HTMLInputElement>) => {
+  /** Attach (or replace) a PDF on a single qualification entry. We only
+   *  persist the filename — actual file bytes are not uploaded yet because
+   *  the backend hasn't shipped that endpoint. */
+  const onQualificationFileChange = (id: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.type !== "application/pdf") {
@@ -112,28 +154,79 @@ export default function ProfilePage() {
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      dispatch(pushToast({ tone: "warning", title: "File too large", message: "Max 5 MB per transcript." }));
+      dispatch(pushToast({ tone: "warning", title: "File too large", message: "Max 5 MB per attachment." }));
       e.target.value = "";
       return;
     }
-    patchExtras(which === "ol" ? { olPdfName: file.name } : { alPdfName: file.name });
+    setExtras((prev) => ({
+      qualifications: prev.qualifications.map((q) =>
+        q.id === id ? { ...q, attachmentName: file.name } : q,
+      ),
+    }));
+    setExtrasDirty(true);
     e.target.value = "";
   };
 
+  const removeQualificationAttachment = (id: string) => {
+    setExtras((prev) => ({
+      qualifications: prev.qualifications.map((q) =>
+        q.id === id ? { ...q, attachmentName: null } : q,
+      ),
+    }));
+    setExtrasDirty(true);
+  };
+
+  /** Save the qualifications list. The full array (multiple titles +
+   *  attachments) lives in localStorage; the FIRST entry's title is also
+   *  mirrored to the backend's `qualificationTitle` field so the
+   *  apply-student gate continues to work. Backend will be extended to
+   *  accept the full array — when that lands, swap this for a single
+   *  PATCH that sends the whole `qualifications` array. */
   const onSaveExtras = async () => {
     if (!P.user?.uid) return;
     setExtrasSaving(true);
-    // Simulated save — when the API gets these fields, swap this for a PATCH.
-    await new Promise((r) => setTimeout(r, 200));
     saveProfileExtras(P.user.uid, extras);
+
+    const primaryTitle = extras.qualifications[0]?.title.trim() ?? "";
+    const backendValue = P.user.qualificationTitle ?? "";
+    if (primaryTitle !== backendValue) {
+      await P.updateProfile({ qualificationTitle: primaryTitle || null });
+    }
+
     setExtrasDirty(false);
     setExtrasSaving(false);
-    dispatch(pushToast({ tone: "success", title: "Profile details saved" }));
+    dispatch(pushToast({ tone: "success", title: "Qualifications saved" }));
   };
 
   const onCancelExtras = () => {
     setExtras(loadProfileExtras(P.user?.uid));
     setExtrasDirty(false);
+  };
+
+  /** Save the three Personal Details fields via PATCH /me §3.2.
+   *  qualificationTitle is saved separately by onSaveExtras below. */
+  const onSaveDetails = async () => {
+    if (!P.user) return;
+    const changes: Parameters<typeof P.updateProfile>[0] = {};
+    if (address.trim() !== (P.user.address ?? "")) {
+      changes.address = address.trim() || null;
+    }
+    if (dateOfBirth !== (P.user.dateOfBirth ?? "")) {
+      changes.dateOfBirth = dateOfBirth || null;
+    }
+    if (gender !== (P.user.gender ?? "")) {
+      changes.gender = gender || null;
+    }
+    const ok = await P.updateProfile(changes);
+    if (ok) setDetailsDirty(false);
+  };
+
+  const onCancelDetails = () => {
+    if (!P.user) return;
+    setAddress(P.user.address ?? "");
+    setDateOfBirth(P.user.dateOfBirth ?? "");
+    setGender((P.user.gender ?? "") as "" | "male" | "female" | "other");
+    setDetailsDirty(false);
   };
 
   if (!P.user) {
@@ -297,13 +390,12 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* ── Personal details (UI only — API integration pending) ───── */}
+      {/* ── Personal details (PATCH /me §3.2) ───────────────────────── */}
       <div className="settings-card">
         <h2>Personal details</h2>
         <p className="settings-sub">
-          Used by the admin team when reviewing your student application.
-          These fields are stored locally for now and will sync to the server
-          once the API is wired up.
+          Required before submitting a Student application. Saved to your
+          account so they sync across devices.
         </p>
 
         <div className="form-grid one">
@@ -313,9 +405,12 @@ export default function ProfilePage() {
               className="input"
               rows={3}
               placeholder="Street, city, postal code, country"
-              value={extras.address}
-              onChange={(e) => patchExtras({ address: e.target.value })}
+              value={address}
+              onChange={(e) => { setAddress(e.target.value); setDetailsDirty(true); }}
             />
+            {P.fieldErrors.address && (
+              <span className="hint" style={{ color: "#DC2626" }}>{P.fieldErrors.address}</span>
+            )}
           </div>
         </div>
 
@@ -325,188 +420,88 @@ export default function ProfilePage() {
             <input
               className="input"
               type="date"
-              value={extras.dateOfBirth}
-              onChange={(e) => patchExtras({ dateOfBirth: e.target.value })}
+              value={dateOfBirth}
+              onChange={(e) => { setDateOfBirth(e.target.value); setDetailsDirty(true); }}
             />
+            {P.fieldErrors.dateOfBirth && (
+              <span className="hint" style={{ color: "#DC2626" }}>{P.fieldErrors.dateOfBirth}</span>
+            )}
           </div>
           <div className="field">
             <label className="label">Gender</label>
             <select
               className="input"
-              value={extras.gender}
-              onChange={(e) => patchExtras({ gender: e.target.value })}
+              value={gender}
+              onChange={(e) => {
+                setGender(e.target.value as "" | "male" | "female" | "other");
+                setDetailsDirty(true);
+              }}
             >
               <option value="">Select…</option>
               {GENDER_OPTIONS.map((g) => (
-                <option key={g} value={g}>{g}</option>
+                <option key={g.value} value={g.value}>{g.label}</option>
               ))}
             </select>
+            {P.fieldErrors.gender && (
+              <span className="hint" style={{ color: "#DC2626" }}>{P.fieldErrors.gender}</span>
+            )}
           </div>
         </div>
 
         <div className="form-actions">
-          <Button variant="ghost" onClick={onCancelExtras} disabled={!extrasDirty || extrasSaving}>
+          <Button variant="ghost" onClick={onCancelDetails} disabled={!detailsDirty || P.saving}>
             Cancel
           </Button>
-          <Button icon="check" onClick={onSaveExtras} disabled={!extrasDirty || extrasSaving}>
-            {extrasSaving ? "Saving…" : "Save details"}
+          <Button icon="check" onClick={onSaveDetails} disabled={!detailsDirty || P.saving}>
+            {P.saving ? "Saving…" : "Save details"}
           </Button>
         </div>
       </div>
 
-      {/* ── Educational qualifications ─────────────────────────────── */}
+      {/* ── Qualifications (optional; each can have a PDF attachment) ── */}
       <div className="settings-card">
-        <h2>Educational qualifications</h2>
+        <h2>Qualifications</h2>
         <p className="settings-sub">
-          Enter your O/L and A/L subject results. You can also attach the
-          original result sheets as PDFs.
+          Add your qualifications — degrees, diplomas, certificates. You can
+          optionally attach the original document as a PDF for each. None of
+          these are mandatory; the first entry&apos;s title is sent with your
+          Student application.
         </p>
 
-        <h3 style={{ fontFamily: "var(--font-heading)", fontSize: 15, fontWeight: 700, color: "var(--color-primary)", margin: "12px 0 10px" }}>
-          O/L results (9 subjects)
-        </h3>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-          {extras.olResults.map((row, idx) => (
-            <div
-              key={`ol-${idx}`}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "32px 1fr 140px",
-                gap: 10,
-                alignItems: "center",
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 12,
-                  color: "var(--color-muted)",
-                  textAlign: "center",
-                }}
-              >
-                {idx + 1}.
-              </span>
-              <input
-                className="input"
-                placeholder={`Subject ${idx + 1}`}
-                value={row.subject}
-                onChange={(e) => patchOl(idx, "subject", e.target.value)}
-              />
-              <input
-                className="input"
-                placeholder="Result (A / B / C / S / W)"
-                value={row.result}
-                onChange={(e) => patchOl(idx, "result", e.target.value)}
-              />
-            </div>
-          ))}
-        </div>
-
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 24 }}>
-          <input
-            ref={olPdfInputRef}
-            type="file"
-            accept="application/pdf"
-            style={{ display: "none" }}
-            onChange={onExtrasFileChange("ol")}
-          />
-          <Button
-            type="button"
-            variant="secondary"
-            icon="upload-cloud"
-            size="sm"
-            onClick={() => olPdfInputRef.current?.click()}
+        {extras.qualifications.length === 0 ? (
+          <div
+            style={{
+              padding: "20px 16px",
+              textAlign: "center",
+              border: "1.5px dashed rgba(21, 42, 36, 0.18)",
+              borderRadius: 12,
+              fontFamily: "var(--font-body)",
+              fontSize: 13,
+              color: "var(--color-muted)",
+              marginBottom: 14,
+            }}
           >
-            {extras.olPdfName ? "Replace O/L PDF" : "Attach O/L results (PDF)"}
-          </Button>
-          {extras.olPdfName && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--color-body-green)" }}>
-              <Icon name="file-text" size={14} />
-              {extras.olPdfName}
-              <button
-                type="button"
-                onClick={() => patchExtras({ olPdfName: null })}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-muted)", display: "flex" }}
-                aria-label="Remove O/L PDF"
-              >
-                <Icon name="x" size={14} />
-              </button>
-            </span>
-          )}
-        </div>
-
-        <h3 style={{ fontFamily: "var(--font-heading)", fontSize: 15, fontWeight: 700, color: "var(--color-primary)", margin: "0 0 10px" }}>
-          A/L results (3 subjects)
-        </h3>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-          {extras.alResults.map((row, idx) => (
-            <div
-              key={`al-${idx}`}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "32px 1fr 140px",
-                gap: 10,
-                alignItems: "center",
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 12,
-                  color: "var(--color-muted)",
-                  textAlign: "center",
-                }}
-              >
-                {idx + 1}.
-              </span>
-              <input
-                className="input"
-                placeholder={`Subject ${idx + 1}`}
-                value={row.subject}
-                onChange={(e) => patchAl(idx, "subject", e.target.value)}
+            No qualifications added yet.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 14 }}>
+            {extras.qualifications.map((q, idx) => (
+              <QualificationRow
+                key={q.id}
+                qualification={q}
+                index={idx}
+                onTitleChange={(v) => updateQualificationTitle(q.id, v)}
+                onFileChange={onQualificationFileChange(q.id)}
+                onRemoveAttachment={() => removeQualificationAttachment(q.id)}
+                onRemove={() => removeQualification(q.id)}
               />
-              <input
-                className="input"
-                placeholder="Result (A / B / C / S / F)"
-                value={row.result}
-                onChange={(e) => patchAl(idx, "result", e.target.value)}
-              />
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
-          <input
-            ref={alPdfInputRef}
-            type="file"
-            accept="application/pdf"
-            style={{ display: "none" }}
-            onChange={onExtrasFileChange("al")}
-          />
-          <Button
-            type="button"
-            variant="secondary"
-            icon="upload-cloud"
-            size="sm"
-            onClick={() => alPdfInputRef.current?.click()}
-          >
-            {extras.alPdfName ? "Replace A/L PDF" : "Attach A/L results (PDF)"}
-          </Button>
-          {extras.alPdfName && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--color-body-green)" }}>
-              <Icon name="file-text" size={14} />
-              {extras.alPdfName}
-              <button
-                type="button"
-                onClick={() => patchExtras({ alPdfName: null })}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-muted)", display: "flex" }}
-                aria-label="Remove A/L PDF"
-              >
-                <Icon name="x" size={14} />
-              </button>
-            </span>
-          )}
-        </div>
+        <Button type="button" variant="secondary" icon="plus" size="sm" onClick={addQualification}>
+          Add qualification
+        </Button>
 
         <div className="form-actions">
           <Button variant="ghost" onClick={onCancelExtras} disabled={!extrasDirty || extrasSaving}>
@@ -569,6 +564,135 @@ export default function ProfilePage() {
             {P.savingPassword ? "Updating…" : "Update password"}
           </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── QualificationRow ─────────────────────────────────────────────── */
+
+function QualificationRow({
+  qualification,
+  index,
+  onTitleChange,
+  onFileChange,
+  onRemoveAttachment,
+  onRemove,
+}: {
+  qualification: Qualification;
+  index: number;
+  onTitleChange: (value: string) => void;
+  onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemoveAttachment: () => void;
+  onRemove: () => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  return (
+    <div
+      style={{
+        border: "1px solid var(--color-stroke)",
+        borderRadius: 12,
+        padding: "14px 14px 12px",
+        background: "var(--color-surface)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 26,
+            height: 26,
+            borderRadius: 9999,
+            background: "var(--color-light-gray)",
+            color: "var(--color-primary)",
+            fontFamily: "var(--font-heading)",
+            fontWeight: 700,
+            fontSize: 12,
+            flexShrink: 0,
+          }}
+        >
+          {index + 1}
+        </span>
+        <input
+          className="input"
+          placeholder='e.g. "Bachelor of Theology"'
+          value={qualification.title}
+          onChange={(e) => onTitleChange(e.target.value)}
+          maxLength={200}
+          style={{ flex: 1, minWidth: 0 }}
+        />
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Remove qualification"
+          style={{
+            background: "transparent",
+            border: 0,
+            cursor: "pointer",
+            color: "var(--color-error)",
+            padding: 6,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 6,
+            flexShrink: 0,
+          }}
+        >
+          <Icon name="trash-2" size={16} />
+        </button>
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf"
+        style={{ display: "none" }}
+        onChange={onFileChange}
+      />
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, paddingLeft: 36 }}>
+        <Button
+          type="button"
+          variant="secondary"
+          icon="upload-cloud"
+          size="sm"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {qualification.attachmentName ? "Replace attachment" : "Attach PDF (optional)"}
+        </Button>
+        {qualification.attachmentName && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontFamily: "var(--font-mono)",
+              fontSize: 12,
+              color: "var(--color-body-green)",
+            }}
+          >
+            <Icon name="file-text" size={14} />
+            {qualification.attachmentName}
+            <button
+              type="button"
+              onClick={onRemoveAttachment}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--color-muted)",
+                display: "flex",
+              }}
+              aria-label="Remove attachment"
+            >
+              <Icon name="x" size={14} />
+            </button>
+          </span>
+        )}
       </div>
     </div>
   );

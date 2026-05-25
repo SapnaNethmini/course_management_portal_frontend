@@ -26,7 +26,7 @@ import { useBatches } from "@/application/hooks/useBatches";
 import { useAppSelector } from "@/application/hooks/useAppSelector";
 import { apiRequest } from "@/infrastructure/api/request";
 import { ProfileIncompleteDialog } from "@/components/profile/ProfileIncompleteDialog";
-import { isProfileExtrasComplete, loadProfileExtras } from "@/lib/profileExtras";
+import { isProfileCoreComplete } from "@/lib/profileExtras";
 
 interface LessonTitle { id: string; title: string }
 
@@ -136,7 +136,7 @@ export default function BrowseCourseDetailPage() {
   };
 
   const handleRequest = async () => {
-    if (!profileChecked && !isProfileExtrasComplete(loadProfileExtras(sessionUser?.uid))) {
+    if (!profileChecked && sessionUser && !isProfileCoreComplete(sessionUser)) {
       setProfileDialogOpen(true);
       return;
     }

@@ -11,7 +11,7 @@ import { Icon } from "@/components/ui/Icon";
 import { useRoleRequests, submitRoleRequest } from "@/application/hooks/useRoleRequests";
 import { ApiRequestError } from "@/infrastructure/api/request";
 import { ProfileIncompleteDialog } from "@/components/profile/ProfileIncompleteDialog";
-import { isProfileExtrasComplete, loadProfileExtras } from "@/lib/profileExtras";
+import { isProfileCoreComplete } from "@/lib/profileExtras";
 
 const FEATURES = [
   { ico: "book-open",       title: "Browse the catalogue",   body: "See every Bible School course, current intakes, and what each semester covers." },
@@ -61,10 +61,11 @@ export default function ApplyStudentPage() {
     e.preventDefault();
     if (!user) return;
     // Show the profile-incomplete WARNING dialog the first time only.
-    // It's informational — Skip submits anyway with no field validation,
-    // and Complete navigates to the Profile section. Either way, the
-    // application itself is never blocked by missing profile fields.
-    if (!profileChecked && !isProfileExtrasComplete(loadProfileExtras(user.uid))) {
+    // The four spec'd fields (dateOfBirth, gender, address, qualificationTitle)
+    // now live on the backend SessionUser — read them from there, not local
+    // storage. Skip submits anyway, Complete navigates to /profile; nothing
+    // here blocks the application.
+    if (!profileChecked && !isProfileCoreComplete(user)) {
       setProfileDialogOpen(true);
       return;
     }

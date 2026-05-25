@@ -15,6 +15,7 @@ import {
   type SessionUser,
 } from "@/application/slices/sessionSlice";
 import { tokenService } from "@/infrastructure/firebase/tokenService";
+import { isFederatedSignInInProgress } from "@/infrastructure/auth/federatedSignInState";
 
 /** Module-level cache so logout can pass the token to DELETE /me/fcm-token. */
 let _cachedFcmToken: string | null = null;
@@ -66,6 +67,13 @@ export function FirebaseAuthListener({ children }: { children: React.ReactNode }
     let safetyTimer: ReturnType<typeof setTimeout>;
 
     const unsubscribe = onIdTokenChanged(auth, async (fbUser) => {
+      // Federated sign-in (Google/Apple) goes:
+      //   signInWithPopup → signOut → POST /auth/federated/* → signInWithCustomToken
+      // Each step fires onIdTokenChanged. Skip the intermediate firings — the
+      // final signInWithCustomToken event arrives after the suppression flag
+      // has been cleared and is processed normally below.
+      if (isFederatedSignInInProgress()) return;
+
       if (!fbUser) {
         if (firstEvent) {
           // Skip the initial null — Firebase is still restoring from IndexedDB.

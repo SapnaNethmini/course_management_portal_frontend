@@ -2,8 +2,8 @@ name: Course Management Portal Frontend
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -11,41 +11,19 @@ jobs:
 
     steps:
      #checkout the repo
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-
-      # setup SSH
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.7.0
+      - name: Deploy on server
+        uses: appleboy/ssh-action@v1.0.3
         with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-     # Deploy to the server
-      - name: Deploy on server
-        run: |
-          ssh -T -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-
+          script: |
             # stop for any command fails
             set -e
 
             REPO_DIR=/home/node3/course-portal/frontend/course_management_portal_frontend
 
-            echo "====Fix floder permission===="
-            sudo chown -R node3:node3 "$REPO_DIR" || true
-            chmod -R u+rwX "$REPO_DIR/.git" || true
-            git config --global --add safe.directory "$REPO_DIR"
-
-            #clonning the repo
-            if [ ! -d "$REPO_DIR/.git" ]; then
-              echo "====clonning the repo===="
-              rm -rf "$REPO_DIR"
-              git clone --single-branch --branch main git@github.com:Kavee-Dewa-26/the-christian-center-rathmalana-next-frontend.git "$REPO_DIR"
-            fi
-
-            cd "$REPO_DIR"
-
-            echo "===Pull the latest code==="
-            git fetch origin main
             git pull origin main
 
             echo "===Deploy the containers==="
@@ -53,4 +31,3 @@ jobs:
             docker system prune -af || true
             docker-compose up -d course-frontend
             docker ps
-          EOF

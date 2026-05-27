@@ -25,25 +25,25 @@ jobs:
         run: |
           ssh -T -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
 
-          # stop for any command fails
-          set -e
+            # stop for any command fails
+            set -e
 
-          REPO_DIR=/home/node3/course-portal/frontend/course_management_portal_frontend
+            REPO_DIR=/home/node3/course-portal/frontend/course_management_portal_frontend
 
-         # echo "====Fix floder permission===="
-         # sudo chown -R ubuntu:ubuntu "$REPO_DIR" || true
-          #chmod -R u+rwX "$REPO_DIR/.git" || true
+           # echo "====Fix floder permission===="
+           # sudo chown -R ubuntu:ubuntu "$REPO_DIR" || true
+            #chmod -R u+rwX "$REPO_DIR/.git" || true
 
-          echo "===Pull the latest code==="
+            echo "===Pull the latest code==="
 
-          cd "$REPO_DIR"
+            cd "$REPO_DIR"
 
-          git config --global --add safe.directory "$REPO_DIR"
-          git pull origin main
+            git config --global --add safe.directory "$REPO_DIR"
+            git pull origin main
 
-          echo "===Deploy the containers==="
-          docker-compose stop course-frontend || true
-          docker system prune -af || true
-          docker-compose up -d course-frontend
-          docker ps
+            echo "===Deploy the containers==="
+            docker-compose stop course-frontend || true
+            docker system prune -af || true
+            docker-compose up -d course-frontend
+            docker ps
           EOF

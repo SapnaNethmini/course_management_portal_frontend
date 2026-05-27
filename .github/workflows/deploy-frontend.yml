@@ -20,13 +20,7 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      #Coneect to tailscale 
-      - name: Conenct VPN
-        run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey ${{ secrets.TS_AUTH_KEY }}
-
-      # Deploy to the server
+     # Deploy to the server
       - name: Deploy on server
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
@@ -39,12 +33,19 @@ jobs:
             echo "====Fix floder permission===="
             sudo chown -R node3:node3 "$REPO_DIR" || true
             chmod -R u+rwX "$REPO_DIR/.git" || true
+            git config --global --add safe.directory "$REPO_DIR"
 
-            echo "===Pull the latest code==="
+            #clonning the repo
+            if [ ! -d "$REPO_DIR/.git" ]; then
+              echo "====clonning the repo===="
+              rm -rf "$REPO_DIR"
+              git clone --single-branch --branch main git@github.com:Kavee-Dewa-26/the-christian-center-rathmalana-next-frontend.git "$REPO_DIR"
+            fi
 
             cd "$REPO_DIR"
 
-            git config --global --add safe.directory "$REPO_DIR"
+            echo "===Pull the latest code==="
+            git fetch origin main
             git pull origin main
 
             echo "===Deploy the containers==="

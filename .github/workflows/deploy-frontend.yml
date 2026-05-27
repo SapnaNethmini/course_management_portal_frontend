@@ -30,9 +30,9 @@ jobs:
 
             REPO_DIR=/home/node3/course-portal/frontend/course_management_portal_frontend
 
-           # echo "====Fix floder permission===="
-           # sudo chown -R ubuntu:ubuntu "$REPO_DIR" || true
-            #chmod -R u+rwX "$REPO_DIR/.git" || true
+            echo "====Fix floder permission===="
+            sudo chown -R ubuntu:ubuntu "$REPO_DIR" || true
+            chmod -R u+rwX "$REPO_DIR/.git" || true
 
             echo "===Pull the latest code==="
 

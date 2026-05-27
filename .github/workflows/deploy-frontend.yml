@@ -14,15 +14,38 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      # setup SSH
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: {{ secrets.SSH_PRIVATE_KEY }}
+
+      # Deploy to the server
+      - name: Deploy on server
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+
+          # stop for any command fails
+          set -e
+
+          REPO_DIR=/home/node3/course-portal/frontend/course_management_portal_frontend
+
+          echo "====Fix floder permission===="
+          sudo chown -R ubuntu:ubuntu "$REPO_DIR" || true
+          chmod -R u+rwX "$REPO_DIR/.git" || true
+
+        #  git config --global --add safe.directory "$REPO_DIR"
+
+
       - name: Pull the latest code
         run: |
-          cd /home/node3/course-portal/frontend/course_management_portal_frontend
-          git config --global --add safe.directory /home/node3/course-portal/frontend/course_management_portal_frontend
+          cd "$REPO_DIR"
+          git config --global --add safe.directory "$REPO_DIR"
           git pull origin main
 
       - name: Deploy the containers
         run: |
-          cd /home/node3/course-portal/frontend/course_management_portal_frontend
+          cd "$REPO_DIR"
           docker-compose stop course-frontend || true
           docker system prune -af || true
           docker-compose up -d course-frontend

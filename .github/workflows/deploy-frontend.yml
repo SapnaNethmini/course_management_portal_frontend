@@ -34,19 +34,16 @@ jobs:
           sudo chown -R ubuntu:ubuntu "$REPO_DIR" || true
           chmod -R u+rwX "$REPO_DIR/.git" || true
 
-        #  git config --global --add safe.directory "$REPO_DIR"
+          echo "===Pull the latest code==="
 
-
-      - name: Pull the latest code
-        run: |
           cd "$REPO_DIR"
+
           git config --global --add safe.directory "$REPO_DIR"
           git pull origin main
 
-      - name: Deploy the containers
-        run: |
-          cd "$REPO_DIR"
+          echo "===Deploy the containers==="
           docker-compose stop course-frontend || true
           docker system prune -af || true
           docker-compose up -d course-frontend
           docker ps
+          EOF

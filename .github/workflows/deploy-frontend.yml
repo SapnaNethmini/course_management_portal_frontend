@@ -23,7 +23,7 @@ jobs:
      # Deploy to the server
       - name: Deploy on server
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          ssh -T -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
 
             # stop for any command fails
             set -e
